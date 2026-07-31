@@ -8,8 +8,8 @@
   width: 100%;
   box-sizing: border-box;
   padding: 8px 12px;
-  margin-bottom: 12px;
-  border-radius: 6px;
+  margin-bottom: var(--space-3);
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text);
@@ -21,8 +21,8 @@
 }
 
 .ticker-list__error {
-  padding: 12px;
-  border-radius: 4px;
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
   background: var(--error-bg);
   border: 1px solid var(--error-border);
   color: var(--error-text);
@@ -34,7 +34,7 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   max-height: 75vh;
   overflow-y: auto;
 }
@@ -42,17 +42,32 @@
 .ticker-list__item {
   width: 100%;
   text-align: left;
-  padding: 8px 12px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: transparent;
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: var(--surface);
   color: var(--text);
   cursor: pointer;
   font: inherit;
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.ticker-list__item:hover:not(:disabled) {
+  border-color: var(--border);
+  color: var(--text-h);
+  transform: translateX(2px);
 }
 
 .ticker-list__item--active {
   border-color: var(--accent-border);
   background: var(--accent-bg);
   color: var(--text-h);
+}
+
+.ticker-list__item--active:hover:not(:disabled) {
+  border-color: var(--accent-border);
 }

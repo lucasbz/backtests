@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .year-filter__label {
@@ -19,14 +19,19 @@
 
 .year-filter__option {
   padding: 6px 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: transparent;
+  background: var(--surface);
   color: var(--text);
   cursor: pointer;
   font: inherit;
   font-size: 13px;
   line-height: 1.2;
+}
+
+.year-filter__option:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  color: var(--text-h);
 }
 
 .year-filter__option--active {

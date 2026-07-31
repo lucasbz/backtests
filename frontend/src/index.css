@@ -2,6 +2,7 @@
   --text: #6b6375;
   --text-h: #08060d;
   --bg: #fff;
+  --surface: #fbfbfe;
   --border: #e5e4e7;
   --code-bg: #f4f3ec;
   --accent: #aa3bff;
@@ -16,6 +17,35 @@
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
+
+  /* Spacing scale - keeps padding/margin/gap values consistent across
+     components instead of ad hoc pixel values. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-8: 48px;
+
+  /* Corner radius scale, applied consistently to cards/buttons/inputs.
+     Kept small/sharp on purpose (trading-terminal feel rather than a
+     soft consumer-SaaS card look) - no pill/fully-rounded shapes here,
+     see YearFilter.css and TickerBrowser.css for the toggle buttons that
+     used to be pill-shaped. */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+
+  /* Soft, low-contrast elevation for card-like surfaces. Redefined per
+     color scheme below since a flat black shadow reads very differently
+     on a light vs. dark background. */
+  --shadow-sm: 0 1px 2px rgba(23, 18, 38, 0.05), 0 1px 1px rgba(23, 18, 38, 0.04);
+  --shadow-md: 0 10px 30px rgba(23, 18, 38, 0.08), 0 2px 8px rgba(23, 18, 38, 0.05);
+
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-fast: 150ms var(--ease);
+  --transition: 220ms var(--ease);
 
   font: 16px/145% var(--sans);
   color-scheme: light dark;
@@ -32,6 +62,7 @@
     --text: #9ca3af;
     --text-h: #f3f4f6;
     --bg: #16171d;
+    --surface: #1c1d26;
     --border: #2e303a;
     --code-bg: #1f2028;
     --accent: #c084fc;
@@ -42,6 +73,9 @@
     --error-text: #f87171;
     --gain: #4ade80;
     --loss: #f87171;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 1px rgba(0, 0, 0, 0.24);
+    --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.25);
   }
 }
 
@@ -60,6 +94,11 @@ body {
   flex-direction: column;
 }
 
+::selection {
+  background: var(--accent-bg);
+  color: var(--text-h);
+}
+
 h1,
 h2,
 h3 {
@@ -70,11 +109,13 @@ h3 {
 
 h1 {
   font-size: 32px;
+  letter-spacing: -0.01em;
   margin: 0;
 }
 
 h2 {
   font-size: 22px;
+  letter-spacing: -0.005em;
   margin: 0 0 4px;
 }
 
@@ -89,7 +130,7 @@ p {
 
 code {
   font-family: var(--mono);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 15px;
   padding: 2px 6px;
   background: var(--code-bg);
@@ -101,19 +142,44 @@ select,
 button {
   font: inherit;
   color: var(--text-h);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    background-color var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
 }
 
 input,
 select {
-  padding: 8px 10px;
-  border-radius: 4px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--bg);
 }
 
+input:hover:not(:disabled),
+select:hover:not(:disabled) {
+  border-color: var(--accent-border);
+}
+
+input:disabled,
+select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+input:focus-visible,
+select:focus-visible,
+button:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
 button {
   padding: 8px 16px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--accent-border);
   background: var(--accent-bg);
   color: var(--text-h);
@@ -122,6 +188,12 @@ button {
 
 button:hover:not(:disabled) {
   border-color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: none;
 }
 
 button:disabled {
