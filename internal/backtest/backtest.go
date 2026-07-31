@@ -33,8 +33,8 @@ type Result struct {
 	// ProfitPercentage is Profit relative to StartingBalance (e.g. 12.5 for
 	// a 12.5% return). Display-only, like money.Money.AsMajorUnits.
 	ProfitPercentage float64
-	// WinRate is the share of decided operations (Gains+Losses, excluding
-	// break-evens) that were gains, e.g. 66.67 for 2 out of 3.
+	// WinRate is the share of operations that were gains, e.g. 66.67 for 2
+	// out of 3.
 	WinRate float64
 }
 
@@ -65,16 +65,20 @@ func compileResult(strategy domain.Strategy, startingBalance money.Money) (*Resu
 	balance := startingBalance
 	gains, losses := 0, 0
 	for _, op := range operations {
+		outcome, err := op.Outcome()
+		if err != nil {
+			return nil, fmt.Errorf("computing outcome for operation on %s: %w", op.Date, err)
+		}
+		switch outcome {
+		case domain.Gain:
+			gains++
+		case domain.Loss:
+			losses++
+		}
+
 		opProfit, err := op.Profit()
 		if err != nil {
 			return nil, fmt.Errorf("computing profit for operation on %s: %w", op.Date, err)
-		}
-
-		switch {
-		case opProfit.IsPositive():
-			gains++
-		case opProfit.IsNegative():
-			losses++
 		}
 
 		profit, err = profit.Add(&opProfit)
@@ -95,8 +99,8 @@ func compileResult(strategy domain.Strategy, startingBalance money.Money) (*Resu
 	}
 
 	var winRate float64
-	if decided := gains + losses; decided > 0 {
-		winRate = float64(gains) / float64(decided) * 100
+	if total := len(operations); total > 0 {
+		winRate = float64(gains) / float64(total) * 100
 	}
 
 	return &Result{

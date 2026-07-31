@@ -154,7 +154,7 @@ func TestCompileResult_Loss(t *testing.T) {
 	}
 }
 
-func TestCompileResult_MixedGainsLossesAndBreakEven(t *testing.T) {
+func TestCompileResult_MixedGainsAndLossesWithBreakEvenCountedAsGain(t *testing.T) {
 	strategy := &stubStrategy{
 		operations: []domain.Operation{
 			{ // gain: +1000
@@ -165,7 +165,7 @@ func TestCompileResult_MixedGainsLossesAndBreakEven(t *testing.T) {
 				BuyOrder:  domain.Order{Price: newMoney(2000), Quantity: 1, OrderType: domain.Buy},
 				SellOrder: domain.Order{Price: newMoney(1500), Quantity: 1, OrderType: domain.Sell},
 			},
-			{ // break-even: 0, counted as neither gain nor loss
+			{ // break-even: 0, counted as a gain
 				BuyOrder:  domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Buy},
 				SellOrder: domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Sell},
 			},
@@ -181,14 +181,14 @@ func TestCompileResult_MixedGainsLossesAndBreakEven(t *testing.T) {
 		t.Fatalf("compileResult: %v", err)
 	}
 
-	if result.Gains != 2 {
-		t.Errorf("Gains = %d, want 2", result.Gains)
+	if result.Gains != 3 {
+		t.Errorf("Gains = %d, want 3", result.Gains)
 	}
 	if result.Losses != 1 {
 		t.Errorf("Losses = %d, want 1", result.Losses)
 	}
-	// 2 gains out of 3 decided operations (break-even excluded)
-	if !approxEqual(result.WinRate, 200.0/3.0) {
-		t.Errorf("WinRate = %v, want %v", result.WinRate, 200.0/3.0)
+	// 3 gains out of 4 operations
+	if !approxEqual(result.WinRate, 75) {
+		t.Errorf("WinRate = %v, want 75", result.WinRate)
 	}
 }

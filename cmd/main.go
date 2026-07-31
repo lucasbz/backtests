@@ -25,6 +25,7 @@ func run(args []string) error {
 	start := fs.String("start", "", "timeframe start date (YYYY-MM-DD)")
 	end := fs.String("end", "", "timeframe end date (YYYY-MM-DD)")
 	balance := fs.String("balance", "", "starting cash balance (e.g. 10000.00)")
+	verbose := fs.Bool("v", false, "print each buy/sell operation")
 
 	strategyName := fs.String("strategy", "", fmt.Sprintf("strategy to run: %s", strategies.AvailableStrategyNames()))
 	if err := fs.Parse(args); err != nil {
@@ -71,17 +72,23 @@ func run(args []string) error {
 		return err
 	}
 
-	printResult(result)
+	printResult(*ticker, startDate, endDate, result, *verbose)
 	return nil
 }
 
-func printResult(result *backtest.Result) {
-	fmt.Printf("Running Backtest for: %s\n", result.StrategyName)
-	fmt.Printf("Starting Balance: %s\n", result.StartingBalance.Display())
-	for _, op := range result.Operations {
-		fmt.Printf("  BUY  %s @ %s x%d\n", op.BuyOrder.Date, op.BuyOrder.Price.Display(), op.BuyOrder.Quantity)
-		fmt.Printf("  SELL %s @ %s x%d\n", op.SellOrder.Date, op.SellOrder.Price.Display(), op.SellOrder.Quantity)
+func printResult(ticker string, start, end time.Time, result *backtest.Result, verbose bool) {
+	fmt.Printf(
+		"Running Backtest for: %s %s to %s | Strategy: %s | Balance: %s -> %s (Profit: %s, %.2f%%) | Gains: %d Losses: %d (Win rate: %.2f%%)\n",
+		ticker, start.Format("2006-01-02"), end.Format("2006-01-02"), result.StrategyName,
+		result.StartingBalance.Display(), result.EndingBalance.Display(), result.Profit.Display(), result.ProfitPercentage,
+		result.Gains, result.Losses, result.WinRate,
+	)
+
+	if verbose {
+		fmt.Println("Operations:")
+		for _, op := range result.Operations {
+			fmt.Printf("  BUY  %s @ %s x%d\n", op.BuyOrder.Date, op.BuyOrder.Price.Display(), op.BuyOrder.Quantity)
+			fmt.Printf("  SELL %s @ %s x%d\n", op.SellOrder.Date, op.SellOrder.Price.Display(), op.SellOrder.Quantity)
+		}
 	}
-	fmt.Printf("Ending Balance: %s (Profit: %s, %.2f%%)\n", result.EndingBalance.Display(), result.Profit.Display(), result.ProfitPercentage)
-	fmt.Printf("Gains: %d, Losses: %d (Win rate: %.2f%%)\n", result.Gains, result.Losses, result.WinRate)
 }

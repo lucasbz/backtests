@@ -53,3 +53,33 @@ func TestOperation_Profit_BreakEven(t *testing.T) {
 		t.Errorf("Profit = %d, want 0", profit.Amount())
 	}
 }
+
+func TestOperation_Outcome(t *testing.T) {
+	tests := []struct {
+		name      string
+		buyPrice  int64
+		sellPrice int64
+		want      OperationOutcome
+	}{
+		{"gain", 1000, 1500, Gain},
+		{"loss", 1500, 1000, Loss},
+		{"break-even counts as gain", 1000, 1000, Gain},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			op := Operation{
+				BuyOrder:  Order{Price: *money.New(tt.buyPrice, Currency), Quantity: 1, OrderType: Buy},
+				SellOrder: Order{Price: *money.New(tt.sellPrice, Currency), Quantity: 1, OrderType: Sell},
+			}
+
+			got, err := op.Outcome()
+			if err != nil {
+				t.Fatalf("Outcome: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("Outcome() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
