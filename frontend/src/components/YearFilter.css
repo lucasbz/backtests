@@ -15,7 +15,6 @@
   flex-wrap: wrap;
   justify-content: center;
   gap: 6px;
-  max-width: 640px;
 }
 
 .year-filter__option {

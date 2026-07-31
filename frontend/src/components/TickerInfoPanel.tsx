@@ -27,16 +27,10 @@ export function TickerInfoPanel({ info, loading, error }: TickerInfoPanelProps) 
       {info && (
         <div className="ticker-info-panel__result">
           <div className="ticker-info-panel__result-row">
-            <span className="ticker-info-panel__label">Ticker</span>
-            <span>{info.ticker}</span>
+            <h2>{info.ticker}</h2>
           </div>
           <div className="ticker-info-panel__result-row">
-            <span className="ticker-info-panel__label">Earliest date</span>
-            <span>{info.earliest}</span>
-          </div>
-          <div className="ticker-info-panel__result-row">
-            <span className="ticker-info-panel__label">Latest date</span>
-            <span>{info.latest}</span>
+            <span>From <b>{info.earliest}</b> to <b>{info.latest}</b></span>
           </div>
         </div>
       )}

@@ -28,12 +28,8 @@ export function BacktestResultCard({ result, label, variant }: BacktestResultCar
 
       <div className="backtest-result-card__summary">
         <div className="backtest-result-card__stat">
-          <span className="backtest-result-card__field-label">Starting balance</span>
-          <span>{formatCurrency(result.startingBalance)}</span>
-        </div>
-        <div className="backtest-result-card__stat">
-          <span className="backtest-result-card__field-label">Ending balance</span>
-          <span>{formatCurrency(result.endingBalance)}</span>
+          <span className="backtest-result-card__field-label">Balance</span>
+          <span>{formatCurrency(result.startingBalance)} &rarr; {formatCurrency(result.endingBalance)}</span>
         </div>
         <div className="backtest-result-card__stat">
           <span className="backtest-result-card__field-label">Profit</span>
@@ -46,13 +42,13 @@ export function BacktestResultCard({ result, label, variant }: BacktestResultCar
           </span>
         </div>
         <div className="backtest-result-card__stat">
-          <span className="backtest-result-card__field-label">Total operations</span>
-          <span>{result.totalOperations}</span>
-        </div>
-        <div className="backtest-result-card__stat">
-          <span className="backtest-result-card__field-label">Gains / Losses</span>
-          <span>
-            {result.gains} / {result.losses}
+          <span className="backtest-result-card__field-label">Operations</span>
+          <span
+            className={
+              result.gains >= result.losses ? 'backtest-result-card__gain' : 'backtest-result-card__loss'
+            }
+          >
+            T: {result.totalOperations} G: {result.gains} / L: {result.losses}
           </span>
         </div>
         <div className="backtest-result-card__stat">

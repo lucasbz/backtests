@@ -68,26 +68,24 @@ export function StrategyComparison({ ticker, defaultStart, defaultEnd }: Strateg
     };
   }, []);
 
-  // Selecting a different ticker invalidates any prior result and dates for
-  // the old one - clear them rather than leaving stale values on screen.
-  // The dates get re-filled by the effect below once the new ticker's info
-  // (earliest/latest) has loaded.
+  // Selecting a different ticker invalidates any prior result, and the date
+  // fields should reflect the new ticker's (possibly year-clamped) default
+  // range. This is a single effect - keyed on `ticker` *and* the defaults -
+  // rather than two separate ones, because `defaultStart`/`defaultEnd` can
+  // legitimately compute to the same string for two different tickers (e.g.
+  // both have full coverage for the selected year), which would leave a
+  // `[defaultStart, defaultEnd]`-only effect unable to tell a new ticker's
+  // defaults apart from the old one's and never re-fire. Keying on `ticker`
+  // as well guarantees this always runs on a ticker change, regardless of
+  // whether the computed default strings happen to match.
   useEffect(() => {
     setBaselineResult(null);
     setBaselineError(null);
     setChallengerResult(null);
     setChallengerError(null);
-    setStart('');
-    setEnd('');
-  }, [ticker]);
-
-  // Default the date range to the ticker's full imported range once known.
-  // Only fires when the defaults actually change (i.e. a new ticker's info
-  // finished loading), so it won't clobber a manual edit made afterwards.
-  useEffect(() => {
-    if (defaultStart) setStart(defaultStart);
-    if (defaultEnd) setEnd(defaultEnd);
-  }, [defaultStart, defaultEnd]);
+    setStart(defaultStart ?? '');
+    setEnd(defaultEnd ?? '');
+  }, [ticker, defaultStart, defaultEnd]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -132,10 +130,7 @@ export function StrategyComparison({ ticker, defaultStart, defaultEnd }: Strateg
   return (
     <section className="strategy-comparison">
       <form className="strategy-comparison__form" onSubmit={handleSubmit}>
-        <div className="strategy-comparison__field">
-          <label htmlFor="bt-ticker">Ticker</label>
-          <input id="bt-ticker" type="text" value={ticker} readOnly disabled />
-        </div>
+        <input id="bt-ticker" type="hidden" value={ticker} readOnly disabled />
 
         <div className="strategy-comparison__field">
           <label htmlFor="bt-start">Start date</label>
@@ -158,6 +153,15 @@ export function StrategyComparison({ ticker, defaultStart, defaultEnd }: Strateg
         </div>
 
         <div className="strategy-comparison__field">
+          <label htmlFor="bt-balance">Starting balance</label>
+          <CurrencyInput
+            id="bt-balance"
+            initialValue={10000}
+            onValueChange={handleBalanceChange}
+          />
+        </div>
+        
+        <div className="strategy-comparison__field">
           <label htmlFor="bt-strategy">Strategy to compare against Buy &amp; Hold</label>
           <select
             id="bt-strategy"
@@ -174,14 +178,6 @@ export function StrategyComparison({ ticker, defaultStart, defaultEnd }: Strateg
           </select>
         </div>
 
-        <div className="strategy-comparison__field">
-          <label htmlFor="bt-balance">Starting balance</label>
-          <CurrencyInput
-            id="bt-balance"
-            initialValue={10000}
-            onValueChange={handleBalanceChange}
-          />
-        </div>
 
         <button type="submit" disabled={!canSubmit}>
           {loading ? 'Running…' : 'Run comparison'}
