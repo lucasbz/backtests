@@ -1,0 +1,75 @@
+.backtest-result-card {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px 16px;
+}
+
+.backtest-result-card--baseline {
+  border-style: dashed;
+}
+
+.backtest-result-card__label {
+  display: inline-block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text);
+  opacity: 0.7;
+}
+
+.backtest-result-card h3 {
+  margin-top: 0;
+}
+
+.backtest-result-card__summary {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px 24px;
+}
+
+.backtest-result-card__stat {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.backtest-result-card__field-label {
+  color: var(--text);
+}
+
+.backtest-result-card__gain {
+  color: var(--gain);
+}
+
+.backtest-result-card__loss {
+  color: var(--loss);
+}
+
+.backtest-result-card__operations {
+  margin-top: 16px;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.backtest-result-card__operations th,
+.backtest-result-card__operations td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: right;
+}
+
+.backtest-result-card__operations th:first-child,
+.backtest-result-card__operations td:first-child {
+  text-align: left;
+}
+
+.backtest-result-card__operations thead {
+  background: var(--code-bg);
+}
+
+.backtest-result-card__hint {
+  margin-top: 16px;
+}

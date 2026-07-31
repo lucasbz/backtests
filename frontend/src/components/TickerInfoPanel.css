@@ -1,0 +1,35 @@
+.ticker-info-panel {
+  text-align: left;
+}
+
+.ticker-info-panel__hint {
+  color: var(--text);
+}
+
+.ticker-info-panel__error {
+  padding: 12px;
+  border-radius: 4px;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  color: var(--error-text);
+}
+
+.ticker-info-panel__result {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ticker-info-panel__result-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 14px;
+}
+
+.ticker-info-panel__result-row:not(:last-child) {
+  border-bottom: 1px solid var(--border);
+}
+
+.ticker-info-panel__label {
+  color: var(--text);
+}

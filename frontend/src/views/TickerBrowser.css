@@ -1,0 +1,20 @@
+.ticker-browser {
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.ticker-browser__detail {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.ticker-browser__empty {
+  color: var(--text);
+  padding: 24px 0;
+}
