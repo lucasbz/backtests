@@ -99,6 +99,23 @@ Without `-v`, only the summary line is printed.
   (breaking even counts as a gain).
 - `Win rate` is `Gains / total operations`.
 
+## HTTP API
+
+`backtest` and `info` are also available as a JSON HTTP API:
+
+```sh
+make serve
+```
+
+which runs:
+
+```sh
+go run ./cmd serve -addr :8080
+```
+
+See [openapi.yaml](openapi.yaml) for the full contract (endpoints,
+request/response shapes, error format).
+
 ## Running tests
 
 ```sh
@@ -117,4 +134,7 @@ which runs `go test ./...`.
   `-strategy` name registry.
 - `internal/backtest` — `Backtest.Run()`: feeds a strategy its quotes and
   compiles the resulting `Result` (profit, balance, gains/losses, win rate).
-- `cmd/main.go` — the CLI entrypoint described above.
+- `internal/api` — JSON HTTP handlers wrapping the same operations as the CLI
+  (see [openapi.yaml](openapi.yaml)).
+- `cmd/main.go` — the CLI entrypoint described above, plus the `serve`
+  subcommand that starts the HTTP API.
