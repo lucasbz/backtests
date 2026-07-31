@@ -11,8 +11,8 @@ func newMoney(amount int64) money.Money {
 	return *money.New(amount, domain.Currency)
 }
 
-func quoteWithLowHigh(date string, low, high int64) domain.Quote {
-	return domain.Quote{Date: date, Low: newMoney(low), High: newMoney(high)}
+func candleWithLowHigh(date string, low, high int64) domain.Candle {
+	return domain.Candle{Date: date, Low: newMoney(low), High: newMoney(high)}
 }
 
 func assertOrder(t *testing.T, label string, got domain.Order, wantDate string, wantPrice int64, wantQuantity int64, wantType domain.OrderType) {
@@ -31,7 +31,7 @@ func assertOrder(t *testing.T, label string, got domain.Order, wantDate string, 
 	}
 }
 
-func TestBuyAndHold_Operations_NoQuotes(t *testing.T) {
+func TestBuyAndHold_Operations_NoCandles(t *testing.T) {
 	s := &BuyAndHold{}
 	if ops := s.Operations(); ops != nil {
 		t.Errorf("Operations() = %+v, want nil", ops)
@@ -40,9 +40,9 @@ func TestBuyAndHold_Operations_NoQuotes(t *testing.T) {
 
 func TestBuyAndHold_Operations_BuysLowSellsHigh(t *testing.T) {
 	s := &BuyAndHold{Balance: newMoney(1200)}
-	s.Traverse(quoteWithLowHigh("2010-01-04", 1200, 1242))
-	s.Traverse(quoteWithLowHigh("2010-06-15", 1500, 1550))
-	s.Traverse(quoteWithLowHigh("2010-12-30", 1800, 1899))
+	s.Traverse(candleWithLowHigh("2010-01-04", 1200, 1242))
+	s.Traverse(candleWithLowHigh("2010-06-15", 1500, 1550))
+	s.Traverse(candleWithLowHigh("2010-12-30", 1800, 1899))
 
 	ops := s.Operations()
 	if len(ops) != 1 {
@@ -57,9 +57,9 @@ func TestBuyAndHold_Operations_BuysLowSellsHigh(t *testing.T) {
 	}
 }
 
-func TestBuyAndHold_Operations_SingleQuoteBuysAndSellsSameDay(t *testing.T) {
+func TestBuyAndHold_Operations_SingleCandleBuysAndSellsSameDay(t *testing.T) {
 	s := &BuyAndHold{Balance: newMoney(1200)}
-	s.Traverse(quoteWithLowHigh("2010-01-04", 1200, 1242))
+	s.Traverse(candleWithLowHigh("2010-01-04", 1200, 1242))
 
 	ops := s.Operations()
 	if len(ops) != 1 {
@@ -72,7 +72,7 @@ func TestBuyAndHold_Operations_SingleQuoteBuysAndSellsSameDay(t *testing.T) {
 
 func TestBuyAndHold_Operations_QuantityScalesWithBalance(t *testing.T) {
 	s := &BuyAndHold{Balance: newMoney(3600)}
-	s.Traverse(quoteWithLowHigh("2010-01-04", 1200, 1242))
+	s.Traverse(candleWithLowHigh("2010-01-04", 1200, 1242))
 
 	ops := s.Operations()
 	if len(ops) != 1 {
@@ -85,7 +85,7 @@ func TestBuyAndHold_Operations_QuantityScalesWithBalance(t *testing.T) {
 
 func TestBuyAndHold_Operations_InsufficientBalance(t *testing.T) {
 	s := &BuyAndHold{Balance: newMoney(500)}
-	s.Traverse(quoteWithLowHigh("2010-01-04", 1200, 1242))
+	s.Traverse(candleWithLowHigh("2010-01-04", 1200, 1242))
 
 	if ops := s.Operations(); ops != nil {
 		t.Errorf("Operations() = %+v, want nil (balance can't afford one share)", ops)

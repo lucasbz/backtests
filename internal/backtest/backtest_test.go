@@ -13,14 +13,14 @@ func approxEqual(a, b float64) bool {
 }
 
 // stubStrategy is a minimal domain.Strategy for testing result compilation
-// without depending on real quote data or a concrete strategy's logic.
+// without depending on real candle data or a concrete strategy's logic.
 type stubStrategy struct {
-	traversed  []domain.Quote
+	traversed  []domain.Candle
 	operations []domain.Operation
 }
 
-func (s *stubStrategy) Traverse(quote domain.Quote) { s.traversed = append(s.traversed, quote) }
-func (s *stubStrategy) Name() string                { return "Stub" }
+func (s *stubStrategy) Traverse(candle domain.Candle) { s.traversed = append(s.traversed, candle) }
+func (s *stubStrategy) Name() string                  { return "Stub" }
 func (s *stubStrategy) Operations() []domain.Operation {
 	return s.operations
 }

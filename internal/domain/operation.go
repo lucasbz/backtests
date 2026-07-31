@@ -3,9 +3,9 @@ package domain
 import "github.com/Rhymond/go-money"
 
 type Operation struct {
-	Date      string
-	BuyOrder  Order
-	SellOrder Order
+	Date      string `json:"date"`
+	BuyOrder  Order  `json:"buyOrder"`
+	SellOrder Order  `json:"sellOrder"`
 }
 
 // OperationOutcome classifies whether an Operation closed at a profit or a

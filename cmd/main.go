@@ -3,9 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
+	"github.com/lucasbz/backtests/internal/api"
 	"github.com/lucasbz/backtests/internal/backtest"
 	"github.com/lucasbz/backtests/internal/cotahist"
 	"github.com/lucasbz/backtests/internal/domain"
@@ -21,7 +23,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: backtests <backtest|info> [flags]")
+		return fmt.Errorf("usage: backtests <backtest|info|serve> [flags]")
 	}
 
 	switch args[0] {
@@ -29,8 +31,10 @@ func run(args []string) error {
 		return runBacktest(args[1:])
 	case "info":
 		return runInfo(args[1:])
+	case "serve":
+		return runServe(args[1:])
 	default:
-		return fmt.Errorf("unknown command %q, want backtest or info", args[0])
+		return fmt.Errorf("unknown command %q, want backtest, info or serve", args[0])
 	}
 }
 
@@ -128,4 +132,19 @@ func runInfo(args []string) error {
 
 	fmt.Printf("%s: data available from %s to %s\n", *ticker, earliest, latest)
 	return nil
+}
+
+// runServe starts an HTTP server exposing the backtest/info commands as a
+// JSON API (see internal/api and openapi.yaml). It runs until the server exits
+// with an error (e.g. the address is already in use); it never exits on
+// its own otherwise.
+func runServe(args []string) error {
+	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+	addr := fs.String("addr", ":8080", "address to listen on (e.g. :8080)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	fmt.Printf("listening on %s\n", *addr)
+	return http.ListenAndServe(*addr, api.NewHandler())
 }

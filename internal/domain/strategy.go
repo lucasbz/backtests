@@ -1,7 +1,7 @@
 package domain
 
 type Strategy interface {
-	Traverse(quote Quote)
+	Traverse(candle Candle)
 	Name() string
 	Operations() []Operation
 }

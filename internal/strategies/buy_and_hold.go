@@ -5,17 +5,17 @@ import (
 	"github.com/lucasbz/backtests/internal/domain"
 )
 
-// BuyAndHold buys once, at the low of the first quote in the time series,
-// and sells once, at the high of the last quote in the time series. Position
+// BuyAndHold buys once, at the low of the first candle in the time series,
+// and sells once, at the high of the last candle in the time series. Position
 // size is as many whole shares as Balance affords at the buy price.
 type BuyAndHold struct {
 	Balance money.Money
 
-	quotes []domain.Quote
+	candles []domain.Candle
 }
 
-func (s *BuyAndHold) Traverse(quote domain.Quote) {
-	s.quotes = append(s.quotes, quote)
+func (s *BuyAndHold) Traverse(candle domain.Candle) {
+	s.candles = append(s.candles, candle)
 }
 
 func (s *BuyAndHold) Name() string {
@@ -23,15 +23,15 @@ func (s *BuyAndHold) Name() string {
 }
 
 // Operations returns the single buy/sell pair for the traversed time series.
-// It's empty if no quotes were traversed, or if Balance can't afford even one
-// share at the buy price.
+// It's empty if no candles were traversed, or if Balance can't afford even
+// one share at the buy price.
 func (s *BuyAndHold) Operations() []domain.Operation {
-	if len(s.quotes) == 0 {
+	if len(s.candles) == 0 {
 		return nil
 	}
 
-	first := s.quotes[0]
-	last := s.quotes[len(s.quotes)-1]
+	first := s.candles[0]
+	last := s.candles[len(s.candles)-1]
 
 	quantity := s.Balance.Amount() / first.Low.Amount()
 	if quantity <= 0 {

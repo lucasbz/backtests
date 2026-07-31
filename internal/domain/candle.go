@@ -9,7 +9,7 @@ import (
 	"github.com/Rhymond/go-money"
 )
 
-// Currency is the currency every Quote/Order/Result money value is
+// Currency is the currency every Candle/Order/Result money value is
 // denominated in. B3, the exchange scripts/import_cotahist.go pulls from,
 // only ever quotes in Brazilian reais.
 const Currency = money.BRL
@@ -32,7 +32,7 @@ func ParseMoney(s string) (money.Money, error) {
 	return moneyFromFloat(f), nil
 }
 
-type Quote struct {
+type Candle struct {
 	Date     string
 	Open     money.Money
 	High     money.Money
@@ -44,10 +44,10 @@ type Quote struct {
 	Trades   int64
 }
 
-// quoteJSON mirrors the plain-decimal shape scripts/import_cotahist.go
+// candleJSON mirrors the plain-decimal shape scripts/import_cotahist.go
 // writes: money fields are bare JSON numbers, not go-money's default
 // {"amount":...,"currency":...} object form.
-type quoteJSON struct {
+type candleJSON struct {
 	Date     string  `json:"date"`
 	Open     float64 `json:"open"`
 	High     float64 `json:"high"`
@@ -59,34 +59,34 @@ type quoteJSON struct {
 	Trades   int64   `json:"trades"`
 }
 
-func (q Quote) MarshalJSON() ([]byte, error) {
-	return json.Marshal(quoteJSON{
-		Date:     q.Date,
-		Open:     q.Open.AsMajorUnits(),
-		High:     q.High.AsMajorUnits(),
-		Low:      q.Low.AsMajorUnits(),
-		Avg:      q.Avg.AsMajorUnits(),
-		Close:    q.Close.AsMajorUnits(),
-		Quantity: q.Quantity,
-		Volume:   q.Volume.AsMajorUnits(),
-		Trades:   q.Trades,
+func (c Candle) MarshalJSON() ([]byte, error) {
+	return json.Marshal(candleJSON{
+		Date:     c.Date,
+		Open:     c.Open.AsMajorUnits(),
+		High:     c.High.AsMajorUnits(),
+		Low:      c.Low.AsMajorUnits(),
+		Avg:      c.Avg.AsMajorUnits(),
+		Close:    c.Close.AsMajorUnits(),
+		Quantity: c.Quantity,
+		Volume:   c.Volume.AsMajorUnits(),
+		Trades:   c.Trades,
 	})
 }
 
-func (q *Quote) UnmarshalJSON(data []byte) error {
-	var raw quoteJSON
+func (c *Candle) UnmarshalJSON(data []byte) error {
+	var raw candleJSON
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return fmt.Errorf("parsing quote: %w", err)
+		return fmt.Errorf("parsing candle: %w", err)
 	}
 
-	q.Date = raw.Date
-	q.Open = moneyFromFloat(raw.Open)
-	q.High = moneyFromFloat(raw.High)
-	q.Low = moneyFromFloat(raw.Low)
-	q.Avg = moneyFromFloat(raw.Avg)
-	q.Close = moneyFromFloat(raw.Close)
-	q.Quantity = raw.Quantity
-	q.Volume = moneyFromFloat(raw.Volume)
-	q.Trades = raw.Trades
+	c.Date = raw.Date
+	c.Open = moneyFromFloat(raw.Open)
+	c.High = moneyFromFloat(raw.High)
+	c.Low = moneyFromFloat(raw.Low)
+	c.Avg = moneyFromFloat(raw.Avg)
+	c.Close = moneyFromFloat(raw.Close)
+	c.Quantity = raw.Quantity
+	c.Volume = moneyFromFloat(raw.Volume)
+	c.Trades = raw.Trades
 	return nil
 }

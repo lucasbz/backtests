@@ -17,15 +17,26 @@ var availableStrategies = map[string]func(balance money.Money) domain.Strategy{
 	"buy-and-hold": func(balance money.Money) domain.Strategy {
 		return &BuyAndHold{Balance: balance}
 	},
+	"two-candle-breakout": func(balance money.Money) domain.Strategy {
+		return &TwoCandleBreakout{Balance: balance}
+	},
 }
 
-func AvailableStrategyNames() string {
+// AvailableStrategyNamesList returns every registered strategy name, sorted.
+// Unlike AvailableStrategyNames (a comma-joined string meant for CLI help
+// text), this is meant for callers that want the raw list, e.g. to serialize
+// as a JSON array.
+func AvailableStrategyNamesList() []string {
 	names := make([]string, 0, len(availableStrategies))
 	for name := range availableStrategies {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	return strings.Join(names, ", ")
+	return names
+}
+
+func AvailableStrategyNames() string {
+	return strings.Join(AvailableStrategyNamesList(), ", ")
 }
 
 // LoadStrategy builds a fresh instance of the named strategy, seeded with

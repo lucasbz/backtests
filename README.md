@@ -74,8 +74,8 @@ Flags:
 
 ### Available strategies
 
-- `buy-and-hold` — buys once, at the low of the first quote in the
-  timeframe, and sells once, at the high of the last quote in the timeframe.
+- `buy-and-hold` — buys once, at the low of the first candle in the
+  timeframe, and sells once, at the high of the last candle in the timeframe.
 
 New strategies are added by implementing `domain.Strategy`
 (`internal/domain/strategy.go`) and registering a constructor in
@@ -116,6 +116,20 @@ go run ./cmd serve -addr :8080
 See [openapi.yaml](openapi.yaml) for the full contract (endpoints,
 request/response shapes, error format).
 
+## Frontend
+
+A React UI for the HTTP API lives in `frontend/`. Start its dev server with:
+
+```sh
+make dev
+```
+
+which runs:
+
+```sh
+cd frontend && npm run dev
+```
+
 ## Running tests
 
 ```sh
@@ -127,12 +141,12 @@ which runs `go test ./...`.
 ## Project layout
 
 - `scripts/import_cotahist.go` — parses COTAHIST files into per-ticker JSON.
-- `internal/domain` — core types: `Quote`, `Order`, `Operation`, `Strategy`.
-- `internal/cotahist` — loads imported quote JSON back into `domain.Quote`s,
+- `internal/domain` — core types: `Candle`, `Order`, `Operation`, `Strategy`.
+- `internal/cotahist` — loads imported candle JSON back into `domain.Candle`s,
   and looks up a ticker's available date range.
 - `internal/strategies` — concrete `domain.Strategy` implementations and the
   `-strategy` name registry.
-- `internal/backtest` — `Backtest.Run()`: feeds a strategy its quotes and
+- `internal/backtest` — `Backtest.Run()`: feeds a strategy its candles and
   compiles the resulting `Result` (profit, balance, gains/losses, win rate).
 - `internal/api` — JSON HTTP handlers wrapping the same operations as the CLI
   (see [openapi.yaml](openapi.yaml)).

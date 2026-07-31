@@ -1,6 +1,7 @@
 package backtest
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -38,17 +39,47 @@ type Result struct {
 	WinRate float64
 }
 
-// Run feeds b.Strategy every quote for b.Ticker within [b.Start, b.End], in
+// resultJSON mirrors Result but with money.Money fields converted to plain
+// JSON numbers (see domain.Candle's candleJSON for the same pattern), and
+// Operations marked omitempty so API callers can drop it (e.g. when the
+// caller didn't ask for verbose output) by nil-ing it out before marshaling.
+type resultJSON struct {
+	StrategyName     string             `json:"strategyName"`
+	StartingBalance  float64            `json:"startingBalance"`
+	EndingBalance    float64            `json:"endingBalance"`
+	Profit           float64            `json:"profit"`
+	ProfitPercentage float64            `json:"profitPercentage"`
+	Gains            int                `json:"gains"`
+	Losses           int                `json:"losses"`
+	WinRate          float64            `json:"winRate"`
+	Operations       []domain.Operation `json:"operations,omitempty"`
+}
+
+func (r Result) MarshalJSON() ([]byte, error) {
+	return json.Marshal(resultJSON{
+		StrategyName:     r.StrategyName,
+		StartingBalance:  r.StartingBalance.AsMajorUnits(),
+		EndingBalance:    r.EndingBalance.AsMajorUnits(),
+		Profit:           r.Profit.AsMajorUnits(),
+		ProfitPercentage: r.ProfitPercentage,
+		Gains:            r.Gains,
+		Losses:           r.Losses,
+		WinRate:          r.WinRate,
+		Operations:       r.Operations,
+	})
+}
+
+// Run feeds b.Strategy every candle for b.Ticker within [b.Start, b.End], in
 // date order, so the strategy can decide whether to buy or sell on each one,
 // then compiles the resulting operations into a Result.
 func (b *Backtest) Run() (*Result, error) {
-	quotes, err := cotahist.LoadQuotes(b.Ticker, b.Start, b.End)
+	candles, err := cotahist.LoadCandles(b.Ticker, b.Start, b.End)
 	if err != nil {
-		return nil, fmt.Errorf("loading quotes for %s: %w", b.Ticker, err)
+		return nil, fmt.Errorf("loading candles for %s: %w", b.Ticker, err)
 	}
 
-	for _, quote := range quotes {
-		b.Strategy.Traverse(quote)
+	for _, candle := range candles {
+		b.Strategy.Traverse(candle)
 	}
 
 	return compileResult(b.Strategy, b.Balance)

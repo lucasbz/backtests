@@ -1,0 +1,400 @@
+openapi: 3.0.3
+info:
+  title: backtests API
+  description: >
+    JSON HTTP API exposing the `backtest` and `info` CLI commands
+    (see `internal/api/api.go`, started via `go run ./cmd serve -addr :8080`
+    / `make serve`).
+
+
+    This is the source of truth for the API contract used by the frontend.
+    If anything here looks inconsistent with what the frontend was
+    originally given, this document wins - treat any mismatch as a bug to
+    raise, not something to route around.
+
+
+    ## Conventions
+
+
+    - All responses are `application/json`.
+    - All monetary values (balances, profit, prices) are plain JSON numbers
+      in BRL major units (e.g. `10000.00`, not cents, and not go-money's
+      `{"amount":...,"currency":...}` object form).
+    - Dates are `"YYYY-MM-DD"` strings throughout (requests and responses).
+    - There is no authentication/authorization on any endpoint.
+    - Errors, at any endpoint and for any failure, always have the shape
+      documented in the `Error` schema below, with an appropriate HTTP
+      status code:
+      - `400` - invalid/missing input (bad JSON, missing required field,
+        unparseable date/number, unknown strategy name, non-positive
+        balance).
+      - `404` - the request was well-formed but referred to something that
+        doesn't exist (currently: an unimported/unknown ticker on
+        `GET /api/info`).
+      - `500` - unexpected server-side failure.
+  version: "1.0.0"
+
+servers:
+  - url: http://localhost:8080
+    description: Local server (default `-addr :8080`)
+
+paths:
+  /api/info:
+    get:
+      operationId: getInfo
+      summary: Look up the available imported date range for a ticker.
+      parameters:
+        - name: ticker
+          in: query
+          required: true
+          description: Ticker to look up, e.g. `PETR4`.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The ticker's imported date range.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InfoResponse"
+              example:
+                ticker: PETR4
+                earliest: "2010-01-04"
+                latest: "2026-07-30"
+        "400":
+          description: Missing/empty `ticker` query param.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: ticker is required
+        "404":
+          description: The ticker has no imported data.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: no data found for ticker "NOPE9" (not imported yet?)
+        "500":
+          description: Unexpected server-side failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/tickers:
+    get:
+      operationId: listTickers
+      summary: List available tickers, optionally filtered to a specific year.
+      parameters:
+        - name: year
+          in: query
+          required: false
+          description: >
+            When present, only tickers that have imported data for this
+            year are returned. Omit to list every ticker with any imported
+            data.
+          schema:
+            type: integer
+          example: 2015
+      responses:
+        "200":
+          description: >
+            A sorted JSON array of ticker symbol strings. `[]` (not `null`)
+            when nothing matches - there is no `404` case for this endpoint.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+              example: ["PETR4", "VALE3"]
+        "400":
+          description: The `year` query param was present but not a valid integer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: year must be a valid integer
+        "500":
+          description: Unexpected server-side failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/strategies:
+    get:
+      operationId: listStrategies
+      summary: List the names accepted by `strategy` on `POST /api/backtest`.
+      responses:
+        "200":
+          description: >
+            A JSON array of strategy name strings, sorted alphabetically.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+              example: ["buy-and-hold"]
+        "500":
+          description: Unexpected server-side failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/backtest:
+    post:
+      operationId: runBacktest
+      summary: Run a backtest, equivalent to the `backtest` CLI command.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BacktestRequest"
+            example:
+              ticker: PETR4
+              start: "2015-01-02"
+              end: "2015-12-30"
+              strategy: buy-and-hold
+              balance: "10000.00"
+              verbose: true
+      responses:
+        "200":
+          description: >
+            The backtest result. `operations` is present only when the
+            request's `verbose` was `true` - it is omitted entirely from the
+            JSON (not `null`, not `[]`) when `verbose` is `false`/absent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BacktestResult"
+              example:
+                strategyName: Buy & Hold
+                startingBalance: 10000
+                endingBalance: 7223.2
+                profit: -2776.8
+                profitPercentage: -27.768000000000004
+                gains: 0
+                losses: 1
+                winRate: 0
+                operations:
+                  - date: "2015-01-02"
+                    buyOrder:
+                      date: "2015-01-02"
+                      price: 9.36
+                      quantity: 1068
+                    sellOrder:
+                      date: "2015-12-30"
+                      price: 6.76
+                      quantity: 1068
+        "400":
+          description: >
+            Invalid input. Possible messages include (not exhaustive):
+            missing required field(s), malformed JSON body, unparseable
+            `balance`, non-positive `balance`, unknown `strategy`,
+            unparseable `start`/`end`.
+
+
+            Note: an unknown/not-yet-imported `ticker` on
+            `POST /api/backtest` does **not** currently produce a `404` the
+            way `GET /api/info` does - it silently runs with zero quotes,
+            producing a `200` result with `gains: 0`, `losses: 0`,
+            `operations` empty (or omitted), and `endingBalance` equal to
+            `startingBalance`. This mirrors the CLI's existing behavior
+            (`backtest` doesn't pre-check the ticker via `info`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missingFields:
+                  value:
+                    error: "ticker, start, end, strategy and balance are all required"
+                invalidJSON:
+                  value:
+                    error: "invalid JSON body: ..."
+                invalidBalance:
+                  value:
+                    error: "parsing balance: parsing money \"abc\": ..."
+                zeroBalance:
+                  value:
+                    error: "balance must be greater than zero"
+                unknownStrategy:
+                  value:
+                    error: "unknown strategy \"nope\", available: buy-and-hold"
+                invalidDate:
+                  value:
+                    error: "parsing start: parsing time \"not-a-date\" as \"2006-01-02\": ..."
+        "500":
+          description: >
+            Unexpected failure reading/computing over already-validated
+            input (e.g. corrupt imported data on disk).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  schemas:
+    Error:
+      type: object
+      description: The JSON shape every endpoint returns on failure.
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human-readable error message.
+      example:
+        error: human-readable message
+
+    InfoResponse:
+      type: object
+      required: [ticker, earliest, latest]
+      properties:
+        ticker:
+          type: string
+          example: PETR4
+        earliest:
+          type: string
+          format: date
+          example: "2010-01-04"
+        latest:
+          type: string
+          format: date
+          example: "2026-07-30"
+
+    BacktestRequest:
+      type: object
+      required: [ticker, start, end, strategy, balance]
+      properties:
+        ticker:
+          type: string
+          description: Ticker to backtest, e.g. `PETR4`. Must already be imported.
+          example: PETR4
+        start:
+          type: string
+          format: date
+          description: Inclusive range start, `YYYY-MM-DD`.
+          example: "2015-01-02"
+        end:
+          type: string
+          format: date
+          description: Inclusive range end, `YYYY-MM-DD`.
+          example: "2015-12-30"
+        strategy:
+          type: string
+          description: >
+            One of the names returned by `GET /api/strategies`, e.g.
+            `buy-and-hold`.
+          example: buy-and-hold
+        balance:
+          type: string
+          description: >
+            Starting cash balance as a decimal string, e.g. `"10000.00"`.
+            Must be > 0. Sent as a string (not a number) to avoid float
+            precision issues, same as the CLI's `-balance` flag.
+          example: "10000.00"
+        verbose:
+          type: boolean
+          default: false
+          description: >
+            When `true`, the response includes the `operations` array.
+
+    Order:
+      type: object
+      description: >
+        A buy or sell order. There is no separate order-type field: the
+        containing key (`buyOrder` vs `sellOrder`) already says which it is.
+      required: [date, price, quantity]
+      properties:
+        date:
+          type: string
+          format: date
+          example: "2015-01-02"
+        price:
+          type: number
+          description: Plain JSON number in BRL major units.
+          example: 9.36
+        quantity:
+          type: integer
+          example: 1068
+
+    Operation:
+      type: object
+      required: [date, buyOrder, sellOrder]
+      properties:
+        date:
+          type: string
+          format: date
+          example: "2015-01-02"
+        buyOrder:
+          $ref: "#/components/schemas/Order"
+        sellOrder:
+          $ref: "#/components/schemas/Order"
+
+    BacktestResult:
+      type: object
+      required:
+        - strategyName
+        - startingBalance
+        - endingBalance
+        - profit
+        - profitPercentage
+        - gains
+        - losses
+        - winRate
+      properties:
+        strategyName:
+          type: string
+          description: >
+            Display name of the strategy that ran (may differ from the
+            request's `strategy` slug, e.g. `"buy-and-hold"` ->
+            `"Buy & Hold"`).
+          example: Buy & Hold
+        startingBalance:
+          type: number
+          description: Same as the request's `balance`, parsed.
+          example: 10000
+        endingBalance:
+          type: number
+          description: Balance after all operations.
+          example: 7223.2
+        profit:
+          type: number
+          description: "`endingBalance - startingBalance`."
+          example: -2776.8
+        profitPercentage:
+          type: number
+          description: >
+            `profit` relative to `startingBalance`, e.g. `12.5` for +12.5%.
+          example: -27.768000000000004
+        gains:
+          type: integer
+          description: >
+            Count of operations that closed at a profit (break-even counts
+            as a gain).
+          example: 0
+        losses:
+          type: integer
+          description: Count of operations that closed at a loss.
+          example: 1
+        winRate:
+          type: number
+          description: >
+            `gains / total operations * 100`. `0` if there were no
+            operations.
+          example: 0
+        operations:
+          type: array
+          description: >
+            **Omitted entirely when `verbose` is `false`/absent** in the
+            request (not present in the JSON at all, not `null` or `[]`).
+          items:
+            $ref: "#/components/schemas/Operation"

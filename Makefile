@@ -27,5 +27,5 @@ serve:
 test:
 	go test ./...
 
-frontend:
+react:
 	cd frontend && npm run dev

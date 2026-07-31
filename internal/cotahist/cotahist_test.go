@@ -12,21 +12,21 @@ import (
 	"github.com/lucasbz/backtests/internal/domain"
 )
 
-// testQuote builds a fully-populated domain.Quote for a given date; the
+// testCandle builds a fully-populated domain.Candle for a given date; the
 // price/volume amount is arbitrary since these tests only exercise
 // date-range filtering and sorting.
-func testQuote(date string, amount int64) domain.Quote {
+func testCandle(date string, amount int64) domain.Candle {
 	m := *money.New(amount, domain.Currency)
-	return domain.Quote{Date: date, Open: m, High: m, Low: m, Avg: m, Close: m, Volume: m}
+	return domain.Candle{Date: date, Open: m, High: m, Low: m, Avg: m, Close: m, Volume: m}
 }
 
-func writeQuoteFile(t *testing.T, dir, ticker string, year int, quotes []domain.Quote) {
+func writeCandleFile(t *testing.T, dir, ticker string, year int, candles []domain.Candle) {
 	t.Helper()
 	tickerDir := filepath.Join(dir, ticker)
 	if err := os.MkdirAll(tickerDir, 0755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	data, err := json.Marshal(quotes)
+	data, err := json.Marshal(candles)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
@@ -36,67 +36,67 @@ func writeQuoteFile(t *testing.T, dir, ticker string, year int, quotes []domain.
 	}
 }
 
-func TestLoadQuotesFrom_FiltersAndSortsAcrossYears(t *testing.T) {
+func TestLoadCandlesFrom_FiltersAndSortsAcrossYears(t *testing.T) {
 	dir := t.TempDir()
 
-	writeQuoteFile(t, dir, "ABCB4", 2010, []domain.Quote{
-		testQuote("2010-06-15", 100),
-		testQuote("2010-12-31", 110),
+	writeCandleFile(t, dir, "ABCB4", 2010, []domain.Candle{
+		testCandle("2010-06-15", 100),
+		testCandle("2010-12-31", 110),
 	})
-	writeQuoteFile(t, dir, "ABCB4", 2011, []domain.Quote{
-		testQuote("2011-01-04", 120),
-		testQuote("2011-06-01", 130),
+	writeCandleFile(t, dir, "ABCB4", 2011, []domain.Candle{
+		testCandle("2011-01-04", 120),
+		testCandle("2011-06-01", 130),
 	})
 
 	from := time.Date(2010, 12, 1, 0, 0, 0, 0, time.UTC)
 	to := time.Date(2011, 1, 31, 0, 0, 0, 0, time.UTC)
 
-	got, err := LoadQuotesFrom(dir, "ABCB4", from, to)
+	got, err := LoadCandlesFrom(dir, "ABCB4", from, to)
 	if err != nil {
-		t.Fatalf("LoadQuotesFrom: %v", err)
+		t.Fatalf("LoadCandlesFrom: %v", err)
 	}
 
 	if len(got) != 2 {
-		t.Fatalf("got %d quotes, want 2: %+v", len(got), got)
+		t.Fatalf("got %d candles, want 2: %+v", len(got), got)
 	}
 	if got[0].Date != "2010-12-31" || got[1].Date != "2011-01-04" {
 		t.Errorf("dates = [%s, %s], want [2010-12-31, 2011-01-04]", got[0].Date, got[1].Date)
 	}
 }
 
-func TestLoadQuotesFrom_MissingYearFileSkipped(t *testing.T) {
+func TestLoadCandlesFrom_MissingYearFileSkipped(t *testing.T) {
 	dir := t.TempDir()
 
-	writeQuoteFile(t, dir, "ABCB4", 2010, []domain.Quote{
-		testQuote("2010-06-15", 100),
+	writeCandleFile(t, dir, "ABCB4", 2010, []domain.Candle{
+		testCandle("2010-06-15", 100),
 	})
 
 	from := time.Date(2009, 1, 1, 0, 0, 0, 0, time.UTC)
 	to := time.Date(2011, 12, 31, 0, 0, 0, 0, time.UTC)
 
-	got, err := LoadQuotesFrom(dir, "ABCB4", from, to)
+	got, err := LoadCandlesFrom(dir, "ABCB4", from, to)
 	if err != nil {
-		t.Fatalf("LoadQuotesFrom: %v", err)
+		t.Fatalf("LoadCandlesFrom: %v", err)
 	}
 	if len(got) != 1 {
-		t.Fatalf("got %d quotes, want 1: %+v", len(got), got)
+		t.Fatalf("got %d candles, want 1: %+v", len(got), got)
 	}
 }
 
 func TestDateRangeFrom_SpansEarliestToLatestYear(t *testing.T) {
 	dir := t.TempDir()
 
-	writeQuoteFile(t, dir, "ABCB4", 2011, []domain.Quote{
-		testQuote("2011-03-10", 100),
-		testQuote("2011-09-20", 110),
+	writeCandleFile(t, dir, "ABCB4", 2011, []domain.Candle{
+		testCandle("2011-03-10", 100),
+		testCandle("2011-09-20", 110),
 	})
-	writeQuoteFile(t, dir, "ABCB4", 2010, []domain.Quote{
-		testQuote("2010-01-04", 90),
-		testQuote("2010-12-30", 95),
+	writeCandleFile(t, dir, "ABCB4", 2010, []domain.Candle{
+		testCandle("2010-01-04", 90),
+		testCandle("2010-12-30", 95),
 	})
-	writeQuoteFile(t, dir, "ABCB4", 2013, []domain.Quote{
-		testQuote("2013-02-01", 120),
-		testQuote("2013-11-15", 125),
+	writeCandleFile(t, dir, "ABCB4", 2013, []domain.Candle{
+		testCandle("2013-02-01", 120),
+		testCandle("2013-11-15", 125),
 	})
 
 	earliest, latest, err := DateRangeFrom(dir, "ABCB4")
@@ -116,5 +116,82 @@ func TestDateRangeFrom_UnknownTicker(t *testing.T) {
 
 	if _, _, err := DateRangeFrom(dir, "NOPE4"); err == nil {
 		t.Fatal("expected error for unknown ticker")
+	}
+}
+
+func TestListTickersFrom_NoFilterReturnsAllSorted(t *testing.T) {
+	dir := t.TempDir()
+
+	writeCandleFile(t, dir, "VALE3", 2010, []domain.Candle{testCandle("2010-06-15", 100)})
+	writeCandleFile(t, dir, "ABCB4", 2011, []domain.Candle{testCandle("2011-01-04", 120)})
+	writeCandleFile(t, dir, "PETR4", 2012, []domain.Candle{testCandle("2012-01-04", 130)})
+
+	got, err := ListTickersFrom(dir, 0)
+	if err != nil {
+		t.Fatalf("ListTickersFrom: %v", err)
+	}
+
+	want := []string{"ABCB4", "PETR4", "VALE3"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got %v, want %v", got, want)
+			break
+		}
+	}
+}
+
+func TestListTickersFrom_YearFilter(t *testing.T) {
+	dir := t.TempDir()
+
+	writeCandleFile(t, dir, "VALE3", 2010, []domain.Candle{testCandle("2010-06-15", 100)})
+	writeCandleFile(t, dir, "ABCB4", 2011, []domain.Candle{testCandle("2011-01-04", 120)})
+	writeCandleFile(t, dir, "PETR4", 2010, []domain.Candle{testCandle("2010-01-04", 130)})
+
+	got, err := ListTickersFrom(dir, 2010)
+	if err != nil {
+		t.Fatalf("ListTickersFrom: %v", err)
+	}
+
+	want := []string{"PETR4", "VALE3"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got %v, want %v", got, want)
+			break
+		}
+	}
+}
+
+func TestListTickersFrom_YearFilterNoMatchesReturnsEmptyNotNil(t *testing.T) {
+	dir := t.TempDir()
+
+	writeCandleFile(t, dir, "VALE3", 2010, []domain.Candle{testCandle("2010-06-15", 100)})
+
+	got, err := ListTickersFrom(dir, 2099)
+	if err != nil {
+		t.Fatalf("ListTickersFrom: %v", err)
+	}
+	if got == nil {
+		t.Fatal("got nil, want empty non-nil slice")
+	}
+	if len(got) != 0 {
+		t.Fatalf("got %v, want empty", got)
+	}
+}
+
+func TestListTickersFrom_MissingDirReturnsEmptyNotError(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "does-not-exist")
+
+	got, err := ListTickersFrom(dir, 0)
+	if err != nil {
+		t.Fatalf("ListTickersFrom: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("got %v, want empty", got)
 	}
 }

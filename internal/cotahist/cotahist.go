@@ -17,17 +17,18 @@ import (
 // scripts/import_cotahist.go: <dir>/<TICKER>/<TICKER>_<YEAR>.json.
 const DefaultCotahistDir = "resources/cotahist"
 
-// LoadQuotes reads ticker's quotes for the inclusive [from, to] range from
+// LoadCandles reads ticker's candles for the inclusive [from, to] range from
 // DefaultCotahistDir, sorted by date.
-func LoadQuotes(ticker string, from, to time.Time) ([]domain.Quote, error) {
-	return LoadQuotesFrom(DefaultCotahistDir, ticker, from, to)
+func LoadCandles(ticker string, from, to time.Time) ([]domain.Candle, error) {
+	return LoadCandlesFrom(DefaultCotahistDir, ticker, from, to)
 }
 
-// LoadQuotesFrom reads ticker's quotes for the inclusive [from, to] range out
-// of dir, sorted by date. It reads one file per year in the range (missing
-// year files are skipped) and filters out any dates outside the range.
-func LoadQuotesFrom(dir, ticker string, from, to time.Time) ([]domain.Quote, error) {
-	var quotes []domain.Quote
+// LoadCandlesFrom reads ticker's candles for the inclusive [from, to] range
+// out of dir, sorted by date. It reads one file per year in the range
+// (missing year files are skipped) and filters out any dates outside the
+// range.
+func LoadCandlesFrom(dir, ticker string, from, to time.Time) ([]domain.Candle, error) {
+	var candles []domain.Candle
 	for year := from.Year(); year <= to.Year(); year++ {
 		path := filepath.Join(dir, ticker, fmt.Sprintf("%s_%d.json", ticker, year))
 		data, err := os.ReadFile(path)
@@ -38,36 +39,36 @@ func LoadQuotesFrom(dir, ticker string, from, to time.Time) ([]domain.Quote, err
 			return nil, fmt.Errorf("reading %s: %w", path, err)
 		}
 
-		var yearQuotes []domain.Quote
-		if err := json.Unmarshal(data, &yearQuotes); err != nil {
+		var yearCandles []domain.Candle
+		if err := json.Unmarshal(data, &yearCandles); err != nil {
 			return nil, fmt.Errorf("parsing %s: %w", path, err)
 		}
-		quotes = append(quotes, yearQuotes...)
+		candles = append(candles, yearCandles...)
 	}
 
-	filtered := quotes[:0]
-	for _, q := range quotes {
-		date, err := time.Parse("2006-01-02", q.Date)
+	filtered := candles[:0]
+	for _, c := range candles {
+		date, err := time.Parse("2006-01-02", c.Date)
 		if err != nil {
-			return nil, fmt.Errorf("parsing quote date %q: %w", q.Date, err)
+			return nil, fmt.Errorf("parsing candle date %q: %w", c.Date, err)
 		}
 		if date.Before(from) || date.After(to) {
 			continue
 		}
-		filtered = append(filtered, q)
+		filtered = append(filtered, c)
 	}
 
 	sort.Slice(filtered, func(i, j int) bool { return filtered[i].Date < filtered[j].Date })
 	return filtered, nil
 }
 
-// DateRange returns the earliest and latest quote dates available for
+// DateRange returns the earliest and latest candle dates available for
 // ticker in DefaultCotahistDir, as "YYYY-MM-DD" strings.
 func DateRange(ticker string) (earliest, latest string, err error) {
 	return DateRangeFrom(DefaultCotahistDir, ticker)
 }
 
-// DateRangeFrom returns the earliest and latest quote dates available for
+// DateRangeFrom returns the earliest and latest candle dates available for
 // ticker under dir, as "YYYY-MM-DD" strings. It only reads the earliest and
 // latest year files present, not every year in between.
 func DateRangeFrom(dir, ticker string) (earliest, latest string, err error) {
@@ -98,33 +99,74 @@ func DateRangeFrom(dir, ticker string) (earliest, latest string, err error) {
 	}
 	sort.Ints(years)
 
-	firstYearQuotes, err := readYearFile(dir, ticker, years[0])
+	firstYearCandles, err := readYearFile(dir, ticker, years[0])
 	if err != nil {
 		return "", "", err
 	}
-	lastYearQuotes, err := readYearFile(dir, ticker, years[len(years)-1])
+	lastYearCandles, err := readYearFile(dir, ticker, years[len(years)-1])
 	if err != nil {
 		return "", "", err
 	}
 
 	// Each year's file is already sorted by date (scripts/import_cotahist.go
 	// sorts before writing).
-	return firstYearQuotes[0].Date, lastYearQuotes[len(lastYearQuotes)-1].Date, nil
+	return firstYearCandles[0].Date, lastYearCandles[len(lastYearCandles)-1].Date, nil
 }
 
-func readYearFile(dir, ticker string, year int) ([]domain.Quote, error) {
+// ListTickers returns the sorted list of tickers with any imported data in
+// DefaultCotahistDir. If year is non-zero, only tickers that have a
+// <TICKER>_<year>.json file are included.
+func ListTickers(year int) ([]string, error) {
+	return ListTickersFrom(DefaultCotahistDir, year)
+}
+
+// ListTickersFrom returns the sorted list of tickers with any imported data
+// under dir (one subdirectory per ticker). If year is non-zero, only
+// tickers that have a <TICKER>_<year>.json file inside their directory are
+// included; this is a presence check only (no file contents are read).
+func ListTickersFrom(dir string, year int) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return []string{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", dir, err)
+	}
+
+	tickers := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		ticker := entry.Name()
+
+		if year != 0 {
+			path := filepath.Join(dir, ticker, fmt.Sprintf("%s_%d.json", ticker, year))
+			if _, err := os.Stat(path); err != nil {
+				continue
+			}
+		}
+
+		tickers = append(tickers, ticker)
+	}
+
+	sort.Strings(tickers)
+	return tickers, nil
+}
+
+func readYearFile(dir, ticker string, year int) ([]domain.Candle, error) {
 	path := filepath.Join(dir, ticker, fmt.Sprintf("%s_%d.json", ticker, year))
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", path, err)
 	}
 
-	var quotes []domain.Quote
-	if err := json.Unmarshal(data, &quotes); err != nil {
+	var candles []domain.Candle
+	if err := json.Unmarshal(data, &candles); err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
 	}
-	if len(quotes) == 0 {
-		return nil, fmt.Errorf("%s has no quotes", path)
+	if len(candles) == 0 {
+		return nil, fmt.Errorf("%s has no candles", path)
 	}
-	return quotes, nil
+	return candles, nil
 }
