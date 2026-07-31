@@ -113,17 +113,23 @@ func DateRangeFrom(dir, ticker string) (earliest, latest string, err error) {
 	return firstYearCandles[0].Date, lastYearCandles[len(lastYearCandles)-1].Date, nil
 }
 
-// ListTickers returns the sorted list of tickers with any imported data in
+// ListTickers returns the list of tickers with any imported data in
 // DefaultCotahistDir. If year is non-zero, only tickers that have a
-// <TICKER>_<year>.json file are included.
+// <TICKER>_<year>.json file are included, and the result is sorted by that
+// year's total trading volume, descending (most-traded first). If year is
+// zero, the result is sorted alphabetically instead, since there's no
+// single year's volume to rank tickers by.
 func ListTickers(year int) ([]string, error) {
 	return ListTickersFrom(DefaultCotahistDir, year)
 }
 
-// ListTickersFrom returns the sorted list of tickers with any imported data
-// under dir (one subdirectory per ticker). If year is non-zero, only
-// tickers that have a <TICKER>_<year>.json file inside their directory are
-// included; this is a presence check only (no file contents are read).
+// ListTickersFrom returns the list of tickers with any imported data under
+// dir (one subdirectory per ticker). If year is non-zero, only tickers that
+// have a <TICKER>_<year>.json file inside their directory are included, and
+// each matching file is read to sum its candles' Volume so the result can
+// be sorted by that year's total trading volume, descending (most-traded
+// first; ties broken alphabetically by ticker). If year is zero, no file
+// contents are read and the result is sorted alphabetically instead.
 func ListTickersFrom(dir string, year int) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
@@ -133,24 +139,56 @@ func ListTickersFrom(dir string, year int) ([]string, error) {
 		return nil, fmt.Errorf("reading %s: %w", dir, err)
 	}
 
-	tickers := make([]string, 0, len(entries))
+	if year == 0 {
+		tickers := make([]string, 0, len(entries))
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			tickers = append(tickers, entry.Name())
+		}
+		sort.Strings(tickers)
+		return tickers, nil
+	}
+
+	type tickerVolume struct {
+		ticker string
+		volume int64
+	}
+	volumes := make([]tickerVolume, 0, len(entries))
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 		ticker := entry.Name()
 
-		if year != 0 {
-			path := filepath.Join(dir, ticker, fmt.Sprintf("%s_%d.json", ticker, year))
-			if _, err := os.Stat(path); err != nil {
-				continue
-			}
+		path := filepath.Join(dir, ticker, fmt.Sprintf("%s_%d.json", ticker, year))
+		if _, err := os.Stat(path); err != nil {
+			continue
 		}
 
-		tickers = append(tickers, ticker)
+		candles, err := readYearFile(dir, ticker, year)
+		if err != nil {
+			return nil, err
+		}
+		var total int64
+		for _, c := range candles {
+			total += c.Volume.Amount()
+		}
+		volumes = append(volumes, tickerVolume{ticker: ticker, volume: total})
 	}
 
-	sort.Strings(tickers)
+	sort.Slice(volumes, func(i, j int) bool {
+		if volumes[i].volume != volumes[j].volume {
+			return volumes[i].volume > volumes[j].volume
+		}
+		return volumes[i].ticker < volumes[j].ticker
+	})
+
+	tickers := make([]string, len(volumes))
+	for i, tv := range volumes {
+		tickers[i] = tv.ticker
+	}
 	return tickers, nil
 }
 

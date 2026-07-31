@@ -2,8 +2,6 @@
   display: flex;
   gap: 32px;
   align-items: flex-start;
-  max-width: 960px;
-  margin: 0 auto;
 }
 
 .ticker-browser__detail {

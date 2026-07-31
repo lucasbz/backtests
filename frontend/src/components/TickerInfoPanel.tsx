@@ -16,8 +16,6 @@ export interface TickerInfoPanelProps {
 export function TickerInfoPanel({ info, loading, error }: TickerInfoPanelProps) {
   return (
     <section className="ticker-info-panel">
-      <h2>Ticker Info</h2>
-
       {loading && <p className="ticker-info-panel__hint">Loading info…</p>}
 
       {error && (

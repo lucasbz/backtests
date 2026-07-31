@@ -28,6 +28,7 @@ type Result struct {
 	StartingBalance money.Money
 	EndingBalance   money.Money
 	Profit          money.Money
+	TotalOperations int
 	Gains           int
 	Losses          int
 
@@ -49,6 +50,7 @@ type resultJSON struct {
 	EndingBalance    float64            `json:"endingBalance"`
 	Profit           float64            `json:"profit"`
 	ProfitPercentage float64            `json:"profitPercentage"`
+	TotalOperations  int                `json:"totalOperations"`
 	Gains            int                `json:"gains"`
 	Losses           int                `json:"losses"`
 	WinRate          float64            `json:"winRate"`
@@ -62,6 +64,7 @@ func (r Result) MarshalJSON() ([]byte, error) {
 		EndingBalance:    r.EndingBalance.AsMajorUnits(),
 		Profit:           r.Profit.AsMajorUnits(),
 		ProfitPercentage: r.ProfitPercentage,
+		TotalOperations:  r.TotalOperations,
 		Gains:            r.Gains,
 		Losses:           r.Losses,
 		WinRate:          r.WinRate,
@@ -91,6 +94,7 @@ func (b *Backtest) Run() (*Result, error) {
 // or a loss.
 func compileResult(strategy domain.Strategy, startingBalance money.Money) (*Result, error) {
 	operations := strategy.Operations()
+	total := len(operations)
 
 	profit := money.New(0, domain.Currency)
 	balance := startingBalance
@@ -130,7 +134,7 @@ func compileResult(strategy domain.Strategy, startingBalance money.Money) (*Resu
 	}
 
 	var winRate float64
-	if total := len(operations); total > 0 {
+	if total > 0 {
 		winRate = float64(gains) / float64(total) * 100
 	}
 
@@ -140,6 +144,7 @@ func compileResult(strategy domain.Strategy, startingBalance money.Money) (*Resu
 		StartingBalance:  startingBalance,
 		EndingBalance:    balance,
 		Profit:           *profit,
+		TotalOperations:  total,
 		Gains:            gains,
 		Losses:           losses,
 		ProfitPercentage: profitPercentage,

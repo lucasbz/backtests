@@ -47,8 +47,18 @@
   color: var(--loss);
 }
 
-.backtest-result-card__operations {
+.backtest-result-card__operations-details {
   margin-top: 16px;
+}
+
+.backtest-result-card__operations-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  user-select: none;
+}
+
+.backtest-result-card__operations {
+  margin-top: 8px;
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;

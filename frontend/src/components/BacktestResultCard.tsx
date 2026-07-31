@@ -46,6 +46,10 @@ export function BacktestResultCard({ result, label, variant }: BacktestResultCar
           </span>
         </div>
         <div className="backtest-result-card__stat">
+          <span className="backtest-result-card__field-label">Total operations</span>
+          <span>{result.totalOperations}</span>
+        </div>
+        <div className="backtest-result-card__stat">
           <span className="backtest-result-card__field-label">Gains / Losses</span>
           <span>
             {result.gains} / {result.losses}
@@ -58,32 +62,35 @@ export function BacktestResultCard({ result, label, variant }: BacktestResultCar
       </div>
 
       {result.operations && result.operations.length > 0 && (
-        <table className="backtest-result-card__operations">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Buy date</th>
-              <th>Buy price</th>
-              <th>Buy qty</th>
-              <th>Sell date</th>
-              <th>Sell price</th>
-              <th>Sell qty</th>
-            </tr>
-          </thead>
-          <tbody>
-            {result.operations.map((op, index) => (
-              <tr key={`${op.buyOrder.date}-${op.sellOrder.date}-${index}`}>
-                <td>{index + 1}</td>
-                <td>{op.buyOrder.date}</td>
-                <td>{formatCurrency(op.buyOrder.price)}</td>
-                <td>{op.buyOrder.quantity}</td>
-                <td>{op.sellOrder.date}</td>
-                <td>{formatCurrency(op.sellOrder.price)}</td>
-                <td>{op.sellOrder.quantity}</td>
+        <details className="backtest-result-card__operations-details">
+          <summary>Operations ({result.operations.length})</summary>
+          <table className="backtest-result-card__operations">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Buy date</th>
+                <th>Buy price</th>
+                <th>Buy qty</th>
+                <th>Sell date</th>
+                <th>Sell price</th>
+                <th>Sell qty</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {result.operations.map((op, index) => (
+                <tr key={`${op.buyOrder.date}-${op.sellOrder.date}-${index}`}>
+                  <td>{index + 1}</td>
+                  <td>{op.buyOrder.date}</td>
+                  <td>{formatCurrency(op.buyOrder.price)}</td>
+                  <td>{op.buyOrder.quantity}</td>
+                  <td>{op.sellOrder.date}</td>
+                  <td>{formatCurrency(op.sellOrder.price)}</td>
+                  <td>{op.sellOrder.quantity}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
       )}
 
       {result.operations && result.operations.length === 0 && (

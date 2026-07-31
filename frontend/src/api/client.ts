@@ -109,6 +109,7 @@ export interface BacktestResult {
   endingBalance: number;
   profit: number;
   profitPercentage: number;
+  totalOperations: number;
   gains: number;
   losses: number;
   winRate: number;

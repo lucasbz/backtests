@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
 import { ApiError, getTickers } from '../api/client';
+import type { YearFilterValue } from './YearFilter';
 import './TickerList.css';
 
 export interface TickerListProps {
+  /** Restricts the list to tickers with data for this year, or 'all'. */
+  year: YearFilterValue;
   selected: string | null;
   onSelect: (ticker: string) => void;
 }
 
-export function TickerList({ selected, onSelect }: TickerListProps) {
+export function TickerList({ year, selected, onSelect }: TickerListProps) {
   const [tickers, setTickers] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -17,7 +20,7 @@ export function TickerList({ selected, onSelect }: TickerListProps) {
     setLoading(true);
     setError(null);
 
-    getTickers()
+    getTickers(year === 'all' ? undefined : year)
       .then((list) => {
         if (cancelled) return;
         setTickers(list);
@@ -34,7 +37,7 @@ export function TickerList({ selected, onSelect }: TickerListProps) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [year]);
 
   return (
     <aside className="ticker-list">
@@ -49,7 +52,9 @@ export function TickerList({ selected, onSelect }: TickerListProps) {
       )}
 
       {!loading && !error && tickers.length === 0 && (
-        <p className="ticker-list__hint">No tickers available.</p>
+        <p className="ticker-list__hint">
+          {year === 'all' ? 'No tickers available.' : `No tickers have data for ${year}.`}
+        </p>
       )}
 
       {!loading && !error && tickers.length > 0 && (

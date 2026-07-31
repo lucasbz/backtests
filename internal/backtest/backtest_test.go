@@ -61,6 +61,9 @@ func TestCompileResult_ProfitAndEndingBalance(t *testing.T) {
 	if result.EndingBalance.Amount() != 8000 {
 		t.Errorf("EndingBalance = %d, want 8000", result.EndingBalance.Amount())
 	}
+	if result.TotalOperations != 1 {
+		t.Errorf("TotalOperations = %d, want 1", result.TotalOperations)
+	}
 	if result.Gains != 1 || result.Losses != 0 {
 		t.Errorf("Gains=%d Losses=%d, want Gains=1 Losses=0", result.Gains, result.Losses)
 	}
@@ -83,6 +86,9 @@ func TestCompileResult_NoOperationsBreaksEven(t *testing.T) {
 
 	if len(result.Operations) != 0 {
 		t.Errorf("got %d operations, want 0", len(result.Operations))
+	}
+	if result.TotalOperations != 0 {
+		t.Errorf("TotalOperations = %d, want 0", result.TotalOperations)
 	}
 	if !result.Profit.IsZero() {
 		t.Errorf("Profit = %d, want 0", result.Profit.Amount())
@@ -142,6 +148,9 @@ func TestCompileResult_Loss(t *testing.T) {
 	if result.EndingBalance.Amount() != 5000 {
 		t.Errorf("EndingBalance = %d, want 5000", result.EndingBalance.Amount())
 	}
+	if result.TotalOperations != 1 {
+		t.Errorf("TotalOperations = %d, want 1", result.TotalOperations)
+	}
 	if result.Gains != 0 || result.Losses != 1 {
 		t.Errorf("Gains=%d Losses=%d, want Gains=0 Losses=1", result.Gains, result.Losses)
 	}
@@ -181,6 +190,9 @@ func TestCompileResult_MixedGainsAndLossesWithBreakEvenCountedAsGain(t *testing.
 		t.Fatalf("compileResult: %v", err)
 	}
 
+	if result.TotalOperations != 4 {
+		t.Errorf("TotalOperations = %d, want 4", result.TotalOperations)
+	}
 	if result.Gains != 3 {
 		t.Errorf("Gains = %d, want 3", result.Gains)
 	}

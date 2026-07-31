@@ -146,6 +146,8 @@ func TestListTickersFrom_NoFilterReturnsAllSorted(t *testing.T) {
 func TestListTickersFrom_YearFilter(t *testing.T) {
 	dir := t.TempDir()
 
+	// ABCB4 is excluded (no 2011 file); it also has a 2010 file that must
+	// not be included in the sum for other tickers' 2010 totals.
 	writeCandleFile(t, dir, "VALE3", 2010, []domain.Candle{testCandle("2010-06-15", 100)})
 	writeCandleFile(t, dir, "ABCB4", 2011, []domain.Candle{testCandle("2011-01-04", 120)})
 	writeCandleFile(t, dir, "PETR4", 2010, []domain.Candle{testCandle("2010-01-04", 130)})
@@ -156,6 +158,65 @@ func TestListTickersFrom_YearFilter(t *testing.T) {
 	}
 
 	want := []string{"PETR4", "VALE3"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got %v, want %v", got, want)
+			break
+		}
+	}
+}
+
+func TestListTickersFrom_YearFilterSortsByDescendingVolume(t *testing.T) {
+	dir := t.TempDir()
+
+	// Alphabetical order would be ABCB4, PETR4, VALE3; total 2010 volume
+	// (sum of each ticker's candle amounts) is the opposite order, so this
+	// only passes if the result is sorted by volume, not alphabetically.
+	writeCandleFile(t, dir, "ABCB4", 2010, []domain.Candle{
+		testCandle("2010-01-04", 10),
+		testCandle("2010-06-15", 10),
+	})
+	writeCandleFile(t, dir, "PETR4", 2010, []domain.Candle{
+		testCandle("2010-01-04", 500),
+	})
+	writeCandleFile(t, dir, "VALE3", 2010, []domain.Candle{
+		testCandle("2010-01-04", 1000),
+		testCandle("2010-06-15", 1000),
+	})
+
+	got, err := ListTickersFrom(dir, 2010)
+	if err != nil {
+		t.Fatalf("ListTickersFrom: %v", err)
+	}
+
+	want := []string{"VALE3", "PETR4", "ABCB4"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got %v, want %v", got, want)
+			break
+		}
+	}
+}
+
+func TestListTickersFrom_YearFilterTiesBrokenAlphabetically(t *testing.T) {
+	dir := t.TempDir()
+
+	writeCandleFile(t, dir, "VALE3", 2010, []domain.Candle{testCandle("2010-06-15", 100)})
+	writeCandleFile(t, dir, "ABCB4", 2010, []domain.Candle{testCandle("2010-01-04", 100)})
+	writeCandleFile(t, dir, "PETR4", 2010, []domain.Candle{testCandle("2010-01-04", 100)})
+
+	got, err := ListTickersFrom(dir, 2010)
+	if err != nil {
+		t.Fatalf("ListTickersFrom: %v", err)
+	}
+
+	want := []string{"ABCB4", "PETR4", "VALE3"}
 	if len(got) != len(want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}

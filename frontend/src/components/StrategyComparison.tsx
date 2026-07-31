@@ -37,7 +37,6 @@ export function StrategyComparison({ ticker, defaultStart, defaultEnd }: Strateg
   const [strategy, setStrategy] = useState('');
   const [balance, setBalance] = useState('10000.00');
   const handleBalanceChange = useCallback((value: string) => setBalance(value), []);
-  const [verbose, setVerbose] = useState(false);
 
   const [baselineResult, setBaselineResult] = useState<BacktestResult | null>(null);
   const [baselineError, setBaselineError] = useState<string | null>(null);
@@ -99,7 +98,9 @@ export function StrategyComparison({ ticker, defaultStart, defaultEnd }: Strateg
     setChallengerError(null);
     setChallengerResult(null);
 
-    const sharedRequest = { ticker, start, end, balance, verbose };
+    // Always request operations from the API; the result card renders them
+    // in a collapsible section rather than gating the request on a toggle.
+    const sharedRequest = { ticker, start, end, balance, verbose: true };
 
     const [baselineOutcome, challengerOutcome] = await Promise.allSettled([
       runBacktest({ ...sharedRequest, strategy: BUY_AND_HOLD }),
@@ -130,8 +131,6 @@ export function StrategyComparison({ ticker, defaultStart, defaultEnd }: Strateg
 
   return (
     <section className="strategy-comparison">
-      <h2>Compare Strategies</h2>
-
       <form className="strategy-comparison__form" onSubmit={handleSubmit}>
         <div className="strategy-comparison__field">
           <label htmlFor="bt-ticker">Ticker</label>
@@ -182,18 +181,6 @@ export function StrategyComparison({ ticker, defaultStart, defaultEnd }: Strateg
             initialValue={10000}
             onValueChange={handleBalanceChange}
           />
-        </div>
-
-        <div className="strategy-comparison__field strategy-comparison__field--checkbox">
-          <label htmlFor="bt-verbose">
-            <input
-              id="bt-verbose"
-              type="checkbox"
-              checked={verbose}
-              onChange={(event) => setVerbose(event.target.checked)}
-            />
-            Show individual operations
-          </label>
         </div>
 
         <button type="submit" disabled={!canSubmit}>

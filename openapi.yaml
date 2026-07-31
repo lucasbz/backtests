@@ -87,7 +87,9 @@ paths:
   /api/tickers:
     get:
       operationId: listTickers
-      summary: List available tickers, optionally filtered to a specific year.
+      summary: >
+        List available tickers, optionally filtered to a specific year and,
+        when filtered, sorted by that year's trading volume.
       parameters:
         - name: year
           in: query
@@ -104,6 +106,11 @@ paths:
           description: >
             A sorted JSON array of ticker symbol strings. `[]` (not `null`)
             when nothing matches - there is no `404` case for this endpoint.
+            Sort order depends on `year`: with no `year` filter, tickers are
+            sorted alphabetically (there's no single year's volume to rank
+            them by); with a `year` filter, tickers are sorted by that
+            year's total trading volume, descending (most-traded first,
+            ties broken alphabetically).
           content:
             application/json:
               schema:
@@ -181,6 +188,7 @@ paths:
                 endingBalance: 7223.2
                 profit: -2776.8
                 profitPercentage: -27.768000000000004
+                totalOperations: 1
                 gains: 0
                 losses: 1
                 winRate: 0
@@ -205,9 +213,9 @@ paths:
             Note: an unknown/not-yet-imported `ticker` on
             `POST /api/backtest` does **not** currently produce a `404` the
             way `GET /api/info` does - it silently runs with zero quotes,
-            producing a `200` result with `gains: 0`, `losses: 0`,
-            `operations` empty (or omitted), and `endingBalance` equal to
-            `startingBalance`. This mirrors the CLI's existing behavior
+            producing a `200` result with `totalOperations: 0`, `gains: 0`,
+            `losses: 0`, `operations` empty (or omitted), and `endingBalance`
+            equal to `startingBalance`. This mirrors the CLI's existing behavior
             (`backtest` doesn't pre-check the ticker via `info`).
           content:
             application/json:
@@ -347,6 +355,7 @@ components:
         - endingBalance
         - profit
         - profitPercentage
+        - totalOperations
         - gains
         - losses
         - winRate
@@ -375,6 +384,14 @@ components:
           description: >
             `profit` relative to `startingBalance`, e.g. `12.5` for +12.5%.
           example: -27.768000000000004
+        totalOperations:
+          type: integer
+          description: >
+            Total number of operations the strategy produced (`gains +
+            losses`). Exposed as its own field so callers can see it without
+            summing `gains`/`losses`, and without needing `verbose: true`
+            (which is required to see the `operations` array itself).
+          example: 1
         gains:
           type: integer
           description: >

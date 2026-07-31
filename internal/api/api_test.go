@@ -5,7 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"sort"
 	"testing"
+	"time"
+
+	"github.com/lucasbz/backtests/internal/cotahist"
 )
 
 func doRequest(t *testing.T, method, target string, body []byte) *httptest.ResponseRecorder {
@@ -108,6 +113,16 @@ func TestHandleBacktest_Valid(t *testing.T) {
 	if _, ok := resp["operations"]; ok {
 		t.Errorf("operations should be omitted when verbose is false, got %v", resp["operations"])
 	}
+	// Note: this test doesn't chdirToRepoRoot, so cotahist.LoadCandles finds
+	// no data for PETR4 here (same as the "unknown ticker" case documented
+	// in openapi.yaml) and the strategy produces zero operations.
+	totalOperations, ok := resp["totalOperations"].(float64)
+	if !ok {
+		t.Fatalf("totalOperations missing or not a number, got %v", resp["totalOperations"])
+	}
+	if totalOperations != 0 {
+		t.Errorf("totalOperations = %v, want 0", totalOperations)
+	}
 }
 
 func TestHandleBacktest_Verbose(t *testing.T) {
@@ -123,6 +138,9 @@ func TestHandleBacktest_Verbose(t *testing.T) {
 	ops, ok := resp["operations"].([]any)
 	if !ok || len(ops) == 0 {
 		t.Fatalf("expected a non-empty operations array, got %v", resp["operations"])
+	}
+	if totalOperations, ok := resp["totalOperations"].(float64); !ok || int(totalOperations) != len(ops) {
+		t.Errorf("totalOperations = %v, want %d (len(operations))", resp["totalOperations"], len(ops))
 	}
 
 	op, ok := ops[0].(map[string]any)
@@ -216,6 +234,57 @@ func TestHandleTickers_YearFilter(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("tickers = %v, want it to contain %q", tickers, "PETR4")
+	}
+}
+
+// TestHandleTickers_YearFilterSortsByDescendingVolume checks the response
+// against real imported data: with a year filter, tickers must come back in
+// descending order of that year's total trading volume, not alphabetically.
+func TestHandleTickers_YearFilterSortsByDescendingVolume(t *testing.T) {
+	chdirToRepoRoot(t)
+	rec := doRequest(t, http.MethodGet, "/api/tickers?year=2015", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var tickers []string
+	decodeJSON(t, rec, &tickers)
+	if len(tickers) < 2 {
+		t.Fatalf("expected at least 2 tickers for year 2015, got %v", tickers)
+	}
+
+	from := time.Date(2015, 1, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2015, 12, 31, 0, 0, 0, 0, time.UTC)
+
+	volumeOf := func(ticker string) int64 {
+		t.Helper()
+		candles, err := cotahist.LoadCandles(ticker, from, to)
+		if err != nil {
+			t.Fatalf("LoadCandles(%q): %v", ticker, err)
+		}
+		var total int64
+		for _, c := range candles {
+			total += c.Volume.Amount()
+		}
+		return total
+	}
+
+	prevVolume := int64(-1)
+	for _, ticker := range tickers {
+		volume := volumeOf(ticker)
+		if prevVolume != -1 && volume > prevVolume {
+			t.Errorf("tickers not sorted by descending volume: %q (volume %d) comes after a ticker with volume %d", ticker, volume, prevVolume)
+		}
+		prevVolume = volume
+	}
+
+	// Sanity check: the response isn't just alphabetical order either
+	// (guards against a no-op sort that happens to look right above).
+	alphabetical := make([]string, len(tickers))
+	copy(alphabetical, tickers)
+	sort.Strings(alphabetical)
+	if reflect.DeepEqual(tickers, alphabetical) {
+		t.Errorf("tickers = %v looks alphabetically sorted, want descending-volume order for year filter", tickers)
 	}
 }
 
