@@ -119,16 +119,16 @@ func TestDateRangeFrom_UnknownTicker(t *testing.T) {
 	}
 }
 
-func TestListTickersFrom_NoFilterReturnsAllSorted(t *testing.T) {
+func TestListAssetsFrom_NoFilterReturnsAllSorted(t *testing.T) {
 	dir := t.TempDir()
 
 	writeCandleFile(t, dir, "VALE3", 2010, []domain.Candle{testCandle("2010-06-15", 100)})
 	writeCandleFile(t, dir, "ABCB4", 2011, []domain.Candle{testCandle("2011-01-04", 120)})
 	writeCandleFile(t, dir, "PETR4", 2012, []domain.Candle{testCandle("2012-01-04", 130)})
 
-	got, err := ListTickersFrom(dir, 0)
+	got, err := ListAssetsFrom(dir, 0)
 	if err != nil {
-		t.Fatalf("ListTickersFrom: %v", err)
+		t.Fatalf("ListAssetsFrom: %v", err)
 	}
 
 	want := []string{"ABCB4", "PETR4", "VALE3"}
@@ -143,7 +143,7 @@ func TestListTickersFrom_NoFilterReturnsAllSorted(t *testing.T) {
 	}
 }
 
-func TestListTickersFrom_YearFilter(t *testing.T) {
+func TestListAssetsFrom_YearFilter(t *testing.T) {
 	dir := t.TempDir()
 
 	// ABCB4 is excluded (no 2011 file); it also has a 2010 file that must
@@ -152,9 +152,9 @@ func TestListTickersFrom_YearFilter(t *testing.T) {
 	writeCandleFile(t, dir, "ABCB4", 2011, []domain.Candle{testCandle("2011-01-04", 120)})
 	writeCandleFile(t, dir, "PETR4", 2010, []domain.Candle{testCandle("2010-01-04", 130)})
 
-	got, err := ListTickersFrom(dir, 2010)
+	got, err := ListAssetsFrom(dir, 2010)
 	if err != nil {
-		t.Fatalf("ListTickersFrom: %v", err)
+		t.Fatalf("ListAssetsFrom: %v", err)
 	}
 
 	want := []string{"PETR4", "VALE3"}
@@ -169,7 +169,7 @@ func TestListTickersFrom_YearFilter(t *testing.T) {
 	}
 }
 
-func TestListTickersFrom_YearFilterSortsByDescendingVolume(t *testing.T) {
+func TestListAssetsFrom_YearFilterSortsByDescendingVolume(t *testing.T) {
 	dir := t.TempDir()
 
 	// Alphabetical order would be ABCB4, PETR4, VALE3; total 2010 volume
@@ -187,9 +187,9 @@ func TestListTickersFrom_YearFilterSortsByDescendingVolume(t *testing.T) {
 		testCandle("2010-06-15", 1000),
 	})
 
-	got, err := ListTickersFrom(dir, 2010)
+	got, err := ListAssetsFrom(dir, 2010)
 	if err != nil {
-		t.Fatalf("ListTickersFrom: %v", err)
+		t.Fatalf("ListAssetsFrom: %v", err)
 	}
 
 	want := []string{"VALE3", "PETR4", "ABCB4"}
@@ -204,16 +204,16 @@ func TestListTickersFrom_YearFilterSortsByDescendingVolume(t *testing.T) {
 	}
 }
 
-func TestListTickersFrom_YearFilterTiesBrokenAlphabetically(t *testing.T) {
+func TestListAssetsFrom_YearFilterTiesBrokenAlphabetically(t *testing.T) {
 	dir := t.TempDir()
 
 	writeCandleFile(t, dir, "VALE3", 2010, []domain.Candle{testCandle("2010-06-15", 100)})
 	writeCandleFile(t, dir, "ABCB4", 2010, []domain.Candle{testCandle("2010-01-04", 100)})
 	writeCandleFile(t, dir, "PETR4", 2010, []domain.Candle{testCandle("2010-01-04", 100)})
 
-	got, err := ListTickersFrom(dir, 2010)
+	got, err := ListAssetsFrom(dir, 2010)
 	if err != nil {
-		t.Fatalf("ListTickersFrom: %v", err)
+		t.Fatalf("ListAssetsFrom: %v", err)
 	}
 
 	want := []string{"ABCB4", "PETR4", "VALE3"}
@@ -228,14 +228,14 @@ func TestListTickersFrom_YearFilterTiesBrokenAlphabetically(t *testing.T) {
 	}
 }
 
-func TestListTickersFrom_YearFilterNoMatchesReturnsEmptyNotNil(t *testing.T) {
+func TestListAssetsFrom_YearFilterNoMatchesReturnsEmptyNotNil(t *testing.T) {
 	dir := t.TempDir()
 
 	writeCandleFile(t, dir, "VALE3", 2010, []domain.Candle{testCandle("2010-06-15", 100)})
 
-	got, err := ListTickersFrom(dir, 2099)
+	got, err := ListAssetsFrom(dir, 2099)
 	if err != nil {
-		t.Fatalf("ListTickersFrom: %v", err)
+		t.Fatalf("ListAssetsFrom: %v", err)
 	}
 	if got == nil {
 		t.Fatal("got nil, want empty non-nil slice")
@@ -245,41 +245,14 @@ func TestListTickersFrom_YearFilterNoMatchesReturnsEmptyNotNil(t *testing.T) {
 	}
 }
 
-func TestListTickersFrom_MissingDirReturnsEmptyNotError(t *testing.T) {
+func TestListAssetsFrom_MissingDirReturnsEmptyNotError(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "does-not-exist")
 
-	got, err := ListTickersFrom(dir, 0)
+	got, err := ListAssetsFrom(dir, 0)
 	if err != nil {
-		t.Fatalf("ListTickersFrom: %v", err)
+		t.Fatalf("ListAssetsFrom: %v", err)
 	}
 	if len(got) != 0 {
 		t.Fatalf("got %v, want empty", got)
-	}
-}
-
-func TestIsStock(t *testing.T) {
-	cases := []struct {
-		ticker string
-		want   bool
-	}{
-		{"PETR4", true},
-		{"PETR3", true},
-		{"VALE3", true},
-		{"ITUB4", true},
-		{"ABCB4", true},
-		{"WEGE3", true},
-		{"IBOV11", false},
-		{"BOVA11", false},
-		{"SANB11", false}, // technically stock-adjacent, but classified as "other" per the 11-suffix convention
-		{"HGLG11", false},
-		{"BDR1", false},   // trailing digit outside 3-8
-		{"XYZW9", false},  // trailing digit outside 3-8
-		{"XYZW", false},   // no trailing digits at all
-		{"XYZW0", false},  // trailing digit outside 3-8
-	}
-	for _, c := range cases {
-		if got := IsStock(c.ticker); got != c.want {
-			t.Errorf("IsStock(%q) = %v, want %v", c.ticker, got, c.want)
-		}
 	}
 }

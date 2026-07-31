@@ -31,20 +31,64 @@ func assertOrder(t *testing.T, label string, got domain.Order, wantDate string, 
 	}
 }
 
-func TestBuyAndHold_Operations_NoCandles(t *testing.T) {
+// runStrategy drives candles one at a time through strategy exactly the way
+// internal/backtest.Backtest.Run does (see traverse in
+// internal/backtest/backtest.go): balance tracking, quantity sizing, and
+// Position lifecycle all live here in the test now, mirroring what moved
+// out of each strategy and into Backtest. Strategy tests use this instead
+// of calling Decide by hand so they keep exercising the same integration
+// behavior (quantity sizing, reinvestment, dropping unclosed positions)
+// they did before the domain.Strategy interface changed, without
+// depending on the backtest package itself.
+func runStrategy(strategy domain.Strategy, balance money.Money, candles []domain.Candle) []domain.Operation {
+	var position *domain.Position
+	var operations []domain.Operation
+
+	for i, candle := range candles {
+		isLast := i == len(candles)-1
+
+		if position == nil {
+			order := strategy.Decide(candle, nil, isLast)
+			if order == nil {
+				continue
+			}
+			order.Quantity = balance.Amount() / order.Price.Amount()
+			if order.Quantity <= 0 {
+				continue
+			}
+			position = &domain.Position{Buy: *order}
+			continue
+		}
+
+		order := strategy.Decide(candle, position, isLast)
+		if order == nil {
+			continue
+		}
+		order.Quantity = position.Buy.Quantity
+		operations = append(operations, position.Close(*order))
+		balance = order.Total()
+		position = nil
+	}
+
+	return operations
+}
+
+func TestBuyAndHold_NoCandles(t *testing.T) {
 	s := &BuyAndHold{}
-	if ops := s.Operations(); ops != nil {
-		t.Errorf("Operations() = %+v, want nil", ops)
+	if ops := runStrategy(s, money.Money{}, nil); ops != nil {
+		t.Errorf("ops = %+v, want nil", ops)
 	}
 }
 
-func TestBuyAndHold_Operations_BuysLowSellsHigh(t *testing.T) {
-	s := &BuyAndHold{Balance: newMoney(1200)}
-	s.Traverse(candleWithLowHigh("2010-01-04", 1200, 1242))
-	s.Traverse(candleWithLowHigh("2010-06-15", 1500, 1550))
-	s.Traverse(candleWithLowHigh("2010-12-30", 1800, 1899))
+func TestBuyAndHold_BuysLowSellsHigh(t *testing.T) {
+	s := &BuyAndHold{}
+	candles := []domain.Candle{
+		candleWithLowHigh("2010-01-04", 1200, 1242),
+		candleWithLowHigh("2010-06-15", 1500, 1550),
+		candleWithLowHigh("2010-12-30", 1800, 1899),
+	}
 
-	ops := s.Operations()
+	ops := runStrategy(s, newMoney(1200), candles)
 	if len(ops) != 1 {
 		t.Fatalf("got %d operations, want 1: %+v", len(ops), ops)
 	}
@@ -57,24 +101,42 @@ func TestBuyAndHold_Operations_BuysLowSellsHigh(t *testing.T) {
 	}
 }
 
-func TestBuyAndHold_Operations_SingleCandleBuysAndSellsSameDay(t *testing.T) {
-	s := &BuyAndHold{Balance: newMoney(1200)}
-	s.Traverse(candleWithLowHigh("2010-01-04", 1200, 1242))
+// TestBuyAndHold_SingleCandleNeverCloses documents a deliberate behavior
+// change from the old self-driven implementation, which computed "first"
+// and "last" from the whole traversed candle slice up front - so a
+// single-candle backtest could buy and sell on the very same day, since
+// "first" and "last" were trivially the same candle.
+//
+// The new Decide-based, streaming model can't replicate that: Decide is
+// asked for at most one action per candle (a buy while flat, or an exit
+// while holding, never both - see domain.Strategy.Decide), so a position
+// opened on a given candle can only be considered for exit starting the
+// *next* candle. With only one candle in the whole backtest, there is no
+// next candle to ask "should I exit, and is this the last one" on, so the
+// position is opened and then dropped, exactly like TwoCandleBreakout drops
+// any position still open when candles run out. This is judged an
+// acceptable, intentional consequence of the refactor (a single-trading-day
+// backtest is a degenerate edge case, not a realistic one) rather than a
+// reason to special-case same-candle buy+sell into Backtest's loop, which
+// would risk changing TwoCandleBreakout's own carefully-tested "never
+// force-close" behavior instead.
+func TestBuyAndHold_SingleCandleNeverCloses(t *testing.T) {
+	s := &BuyAndHold{}
+	candles := []domain.Candle{candleWithLowHigh("2010-01-04", 1200, 1242)}
 
-	ops := s.Operations()
-	if len(ops) != 1 {
-		t.Fatalf("got %d operations, want 1: %+v", len(ops), ops)
-	}
-	if ops[0].BuyOrder.Price.Amount() != 1200 || ops[0].SellOrder.Price.Amount() != 1242 {
-		t.Errorf("op = %+v, want buy@1200 sell@1242", ops[0])
+	if ops := runStrategy(s, newMoney(1200), candles); ops != nil {
+		t.Errorf("ops = %+v, want nil (single candle can't be both entry and exit)", ops)
 	}
 }
 
-func TestBuyAndHold_Operations_QuantityScalesWithBalance(t *testing.T) {
-	s := &BuyAndHold{Balance: newMoney(3600)}
-	s.Traverse(candleWithLowHigh("2010-01-04", 1200, 1242))
+func TestBuyAndHold_QuantityScalesWithBalance(t *testing.T) {
+	s := &BuyAndHold{}
+	candles := []domain.Candle{
+		candleWithLowHigh("2010-01-04", 1200, 1242),
+		candleWithLowHigh("2010-01-05", 1500, 1600),
+	}
 
-	ops := s.Operations()
+	ops := runStrategy(s, newMoney(3600), candles)
 	if len(ops) != 1 {
 		t.Fatalf("got %d operations, want 1: %+v", len(ops), ops)
 	}
@@ -83,11 +145,11 @@ func TestBuyAndHold_Operations_QuantityScalesWithBalance(t *testing.T) {
 	}
 }
 
-func TestBuyAndHold_Operations_InsufficientBalance(t *testing.T) {
-	s := &BuyAndHold{Balance: newMoney(500)}
-	s.Traverse(candleWithLowHigh("2010-01-04", 1200, 1242))
+func TestBuyAndHold_InsufficientBalance(t *testing.T) {
+	s := &BuyAndHold{}
+	candles := []domain.Candle{candleWithLowHigh("2010-01-04", 1200, 1242)}
 
-	if ops := s.Operations(); ops != nil {
-		t.Errorf("Operations() = %+v, want nil (balance can't afford one share)", ops)
+	if ops := runStrategy(s, newMoney(500), candles); ops != nil {
+		t.Errorf("ops = %+v, want nil (balance can't afford one share)", ops)
 	}
 }

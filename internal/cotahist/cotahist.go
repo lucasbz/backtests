@@ -17,20 +17,20 @@ import (
 // scripts/import_cotahist.go: <dir>/<TICKER>/<TICKER>_<YEAR>.json.
 const DefaultCotahistDir = "resources/cotahist"
 
-// LoadCandles reads ticker's candles for the inclusive [from, to] range from
+// LoadCandles reads asset's candles for the inclusive [from, to] range from
 // DefaultCotahistDir, sorted by date.
-func LoadCandles(ticker string, from, to time.Time) ([]domain.Candle, error) {
-	return LoadCandlesFrom(DefaultCotahistDir, ticker, from, to)
+func LoadCandles(asset string, from, to time.Time) ([]domain.Candle, error) {
+	return LoadCandlesFrom(DefaultCotahistDir, asset, from, to)
 }
 
-// LoadCandlesFrom reads ticker's candles for the inclusive [from, to] range
+// LoadCandlesFrom reads asset's candles for the inclusive [from, to] range
 // out of dir, sorted by date. It reads one file per year in the range
 // (missing year files are skipped) and filters out any dates outside the
 // range.
-func LoadCandlesFrom(dir, ticker string, from, to time.Time) ([]domain.Candle, error) {
+func LoadCandlesFrom(dir, asset string, from, to time.Time) ([]domain.Candle, error) {
 	var candles []domain.Candle
 	for year := from.Year(); year <= to.Year(); year++ {
-		path := filepath.Join(dir, ticker, fmt.Sprintf("%s_%d.json", ticker, year))
+		path := filepath.Join(dir, asset, fmt.Sprintf("%s_%d.json", asset, year))
 		data, err := os.ReadFile(path)
 		if os.IsNotExist(err) {
 			continue
@@ -63,25 +63,25 @@ func LoadCandlesFrom(dir, ticker string, from, to time.Time) ([]domain.Candle, e
 }
 
 // DateRange returns the earliest and latest candle dates available for
-// ticker in DefaultCotahistDir, as "YYYY-MM-DD" strings.
-func DateRange(ticker string) (earliest, latest string, err error) {
-	return DateRangeFrom(DefaultCotahistDir, ticker)
+// asset in DefaultCotahistDir, as "YYYY-MM-DD" strings.
+func DateRange(asset string) (earliest, latest string, err error) {
+	return DateRangeFrom(DefaultCotahistDir, asset)
 }
 
 // DateRangeFrom returns the earliest and latest candle dates available for
-// ticker under dir, as "YYYY-MM-DD" strings. It only reads the earliest and
+// asset under dir, as "YYYY-MM-DD" strings. It only reads the earliest and
 // latest year files present, not every year in between.
-func DateRangeFrom(dir, ticker string) (earliest, latest string, err error) {
-	tickerDir := filepath.Join(dir, ticker)
-	entries, err := os.ReadDir(tickerDir)
+func DateRangeFrom(dir, asset string) (earliest, latest string, err error) {
+	assetDir := filepath.Join(dir, asset)
+	entries, err := os.ReadDir(assetDir)
 	if os.IsNotExist(err) {
-		return "", "", fmt.Errorf("no data found for ticker %q (not imported yet?)", ticker)
+		return "", "", fmt.Errorf("no data found for asset %q (not imported yet?)", asset)
 	}
 	if err != nil {
-		return "", "", fmt.Errorf("reading %s: %w", tickerDir, err)
+		return "", "", fmt.Errorf("reading %s: %w", assetDir, err)
 	}
 
-	prefix, suffix := ticker+"_", ".json"
+	prefix, suffix := asset+"_", ".json"
 	var years []int
 	for _, entry := range entries {
 		name := entry.Name()
@@ -95,15 +95,15 @@ func DateRangeFrom(dir, ticker string) (earliest, latest string, err error) {
 		years = append(years, year)
 	}
 	if len(years) == 0 {
-		return "", "", fmt.Errorf("no data found for ticker %q (not imported yet?)", ticker)
+		return "", "", fmt.Errorf("no data found for asset %q (not imported yet?)", asset)
 	}
 	sort.Ints(years)
 
-	firstYearCandles, err := readYearFile(dir, ticker, years[0])
+	firstYearCandles, err := readYearFile(dir, asset, years[0])
 	if err != nil {
 		return "", "", err
 	}
-	lastYearCandles, err := readYearFile(dir, ticker, years[len(years)-1])
+	lastYearCandles, err := readYearFile(dir, asset, years[len(years)-1])
 	if err != nil {
 		return "", "", err
 	}
@@ -113,24 +113,24 @@ func DateRangeFrom(dir, ticker string) (earliest, latest string, err error) {
 	return firstYearCandles[0].Date, lastYearCandles[len(lastYearCandles)-1].Date, nil
 }
 
-// ListTickers returns the list of tickers with any imported data in
+// ListAssets returns the list of tickers with any imported data in
 // DefaultCotahistDir. If year is non-zero, only tickers that have a
 // <TICKER>_<year>.json file are included, and the result is sorted by that
 // year's total trading volume, descending (most-traded first). If year is
 // zero, the result is sorted alphabetically instead, since there's no
 // single year's volume to rank tickers by.
-func ListTickers(year int) ([]string, error) {
-	return ListTickersFrom(DefaultCotahistDir, year)
+func ListAssets(year int) ([]string, error) {
+	return ListAssetsFrom(DefaultCotahistDir, year)
 }
 
-// ListTickersFrom returns the list of tickers with any imported data under
+// ListAssetsFrom returns the list of tickers with any imported data under
 // dir (one subdirectory per ticker). If year is non-zero, only tickers that
 // have a <TICKER>_<year>.json file inside their directory are included, and
 // each matching file is read to sum its candles' Volume so the result can
 // be sorted by that year's total trading volume, descending (most-traded
 // first; ties broken alphabetically by ticker). If year is zero, no file
 // contents are read and the result is sorted alphabetically instead.
-func ListTickersFrom(dir string, year int) ([]string, error) {
+func ListAssetsFrom(dir string, year int) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
 		return []string{}, nil
@@ -192,34 +192,8 @@ func ListTickersFrom(dir string, year int) ([]string, error) {
 	return tickers, nil
 }
 
-// IsStock reports whether ticker looks like a common equity (ordinary or
-// preferred share class) as opposed to a unit/ETF/FII/BDR.
-//
-// B3 ticker symbols are a 4-letter root followed by 1-2 trailing digits
-// denoting the share class/instrument type: trailing digits 3-8 denote
-// ordinary/preferred stock classes, while 11 (or any other multi-digit
-// suffix) denotes a unit, ETF, FII, or BDR. This is a simplification, not a
-// bulletproof rule - some equity "units" ending in 11 (e.g. SANB11) are
-// technically stock-adjacent but are classified here as "not a stock" along
-// with everything else ending in 11, matching the common casual convention.
-func IsStock(ticker string) bool {
-	i := len(ticker)
-	for i > 0 && ticker[i-1] >= '0' && ticker[i-1] <= '9' {
-		i--
-	}
-	digits := ticker[i:]
-	if digits == "" {
-		return false
-	}
-	n, err := strconv.Atoi(digits)
-	if err != nil {
-		return false
-	}
-	return n >= 3 && n <= 8
-}
-
-func readYearFile(dir, ticker string, year int) ([]domain.Candle, error) {
-	path := filepath.Join(dir, ticker, fmt.Sprintf("%s_%d.json", ticker, year))
+func readYearFile(dir, asset string, year int) ([]domain.Candle, error) {
+	path := filepath.Join(dir, asset, fmt.Sprintf("%s_%d.json", asset, year))
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", path, err)

@@ -1,57 +1,47 @@
 package strategies
 
 import (
-	"github.com/Rhymond/go-money"
 	"github.com/lucasbz/backtests/internal/domain"
 )
 
-// BuyAndHold buys once, at the low of the first candle in the time series,
-// and sells once, at the high of the last candle in the time series. Position
-// size is as many whole shares as Balance affords at the buy price.
-type BuyAndHold struct {
-	Balance money.Money
-
-	candles []domain.Candle
-}
-
-func (s *BuyAndHold) Traverse(candle domain.Candle) {
-	s.candles = append(s.candles, candle)
-}
+// BuyAndHold buys once, at the low of the first candle it's asked about,
+// and sells once, at the high of the last candle of the backtest - signaled
+// to Decide via isLast, since a pure per-candle decision has no other way
+// to know it has reached the end. Position size is as many whole shares as
+// the running balance affords at the buy price, computed by Backtest (see
+// domain.Strategy.Decide), not here.
+//
+// Because Decide only ever proposes one action per candle - a buy while
+// flat, or an exit while holding, never both on the same candle - a
+// backtest consisting of a single candle buys but never sells: there's no
+// second candle on which to ask the "should I exit, and is this the last
+// one" question. This is an intentional consequence of moving from the old
+// self-driven implementation (which computed first/last from the whole
+// traversed slice up front, even if they were the same candle) to Backtest
+// driving a real streaming, candle-by-candle loop; see
+// TestBuyAndHold_Decide_SingleCandleNeverCloses.
+type BuyAndHold struct{}
 
 func (s *BuyAndHold) Name() string {
 	return "Buy & Hold"
 }
 
-// Operations returns the single buy/sell pair for the traversed time series.
-// It's empty if no candles were traversed, or if Balance can't afford even
-// one share at the buy price.
-func (s *BuyAndHold) Operations() []domain.Operation {
-	if len(s.candles) == 0 {
+func (s *BuyAndHold) Decide(candle domain.Candle, position *domain.Position, isLast bool) *domain.Order {
+	if position == nil {
+		return &domain.Order{
+			Date:      candle.Date,
+			Price:     candle.Low,
+			OrderType: domain.Buy,
+		}
+	}
+
+	if !isLast {
 		return nil
 	}
-
-	first := s.candles[0]
-	last := s.candles[len(s.candles)-1]
-
-	quantity := s.Balance.Amount() / first.Low.Amount()
-	if quantity <= 0 {
-		return nil
-	}
-
-	buy := domain.Order{
-		Date:      first.Date,
-		Price:     first.Low,
-		Quantity:  quantity,
-		OrderType: domain.Buy,
-	}
-	sell := domain.Order{
-		Date:      last.Date,
-		Price:     last.High,
-		Quantity:  quantity,
+	return &domain.Order{
+		Date:      candle.Date,
+		Price:     candle.High,
+		Quantity:  position.Buy.Quantity,
 		OrderType: domain.Sell,
-	}
-
-	return []domain.Operation{
-		{Date: buy.Date, BuyOrder: buy, SellOrder: sell},
 	}
 }

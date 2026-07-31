@@ -38,7 +38,7 @@ func runBacktest(args []string) error {
 		return fmt.Errorf("-balance must be greater than zero, got %q", *balance)
 	}
 
-	newStrategy, err := strategies.LoadStrategy(*strategyName, startingBalance)
+	newStrategy, err := strategies.LoadStrategy(*strategyName)
 	if err != nil {
 		return err
 	}
@@ -53,7 +53,7 @@ func runBacktest(args []string) error {
 	}
 
 	bt := &backtest.Backtest{
-		Ticker:   *ticker,
+		Asset:    *ticker,
 		Start:    startDate,
 		End:      endDate,
 		Balance:  startingBalance,

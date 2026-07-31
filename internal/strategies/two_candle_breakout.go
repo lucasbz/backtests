@@ -1,7 +1,6 @@
 package strategies
 
 import (
-	"github.com/Rhymond/go-money"
 	"github.com/lucasbz/backtests/internal/domain"
 )
 
@@ -16,88 +15,71 @@ import (
 //
 // If a candle doesn't reach the trigger price, nothing happens and the
 // window slides forward to the next candle. A completed sell immediately
-// starts a new buy search on the very next candle (no cooldown), reinvesting
-// the full proceeds into the next buy's position size.
+// starts a new buy search on the very next candle (no cooldown); Backtest
+// reinvests the full sell proceeds into the next buy's position size.
+//
+// TwoCandleBreakout never force-closes a position: if the backtest's
+// candles run out while it's still holding, that position is left open and
+// Backtest drops it, exactly as it did under the old self-driven
+// implementation (see the package tests for this documented behavior).
 type TwoCandleBreakout struct {
-	Balance money.Money
-
-	candles []domain.Candle
-}
-
-func (s *TwoCandleBreakout) Traverse(candle domain.Candle) {
-	s.candles = append(s.candles, candle)
+	// window holds the (up to) two candles immediately preceding the one
+	// currently being decided on - the sliding two-candle range described
+	// above. It's the only state this strategy keeps; "am I holding" is
+	// Backtest's job now, reflected in Decide's position argument.
+	window []domain.Candle
 }
 
 func (s *TwoCandleBreakout) Name() string {
 	return "Two-Candle Breakout"
 }
 
-// Operations replays the traversed candles through the buy/sell rules
-// described on TwoCandleBreakout, reinvesting each sell's proceeds as the
-// next buy's available balance. If a buy is still open when the traversed
-// candles run out (no candle ever touched the sell trigger), it's dropped:
-// only completed buy/sell pairs are reported.
+// Decide implements domain.Strategy. It ignores isLast: per the type doc
+// above, an unclosed position at the end of the backtest is intentionally
+// dropped, not force-sold.
+func (s *TwoCandleBreakout) Decide(candle domain.Candle, position *domain.Position, isLast bool) *domain.Order {
+	defer s.remember(candle)
 
-func (s *TwoCandleBreakout) Operations() []domain.Operation {
-	if len(s.candles) < 3 {
-		return nil
+	if len(s.window) < 2 {
+		return nil // not enough history yet to have a two-candle range
+	}
+	prev1, prev2 := s.window[0], s.window[1]
+
+	if position == nil {
+		minPrice := prev1.Low
+		if prev2.Low.Amount() < minPrice.Amount() {
+			minPrice = prev2.Low
+		}
+		if candle.Low.Amount() > minPrice.Amount() {
+			return nil // low of the last two candles wasn't reached yet
+		}
+		return &domain.Order{
+			Date:      candle.Date,
+			Price:     minPrice,
+			OrderType: domain.Buy,
+		}
 	}
 
-	var operations []domain.Operation
-	balance := s.Balance
-	holding := false
-	var buyOrder domain.Order
-
-	for i := 2; i < len(s.candles); i++ {
-		prev1, prev2, current := s.candles[i-2], s.candles[i-1], s.candles[i]
-
-		if !holding {
-			minPrice := prev1.Low
-			if prev2.Low.Amount() < minPrice.Amount() {
-				minPrice = prev2.Low
-			}
-			if current.Low.Amount() > minPrice.Amount() {
-				continue // low of the last two candles wasn't reached yet
-			}
-
-			quantity := balance.Amount() / minPrice.Amount()
-			if quantity <= 0 {
-				continue // can't afford even one share at this price yet
-			}
-
-			buyOrder = domain.Order{
-				Date:      current.Date,
-				Price:     minPrice,
-				Quantity:  quantity,
-				OrderType: domain.Buy,
-			}
-			holding = true
-			continue
-		}
-
-		maxPrice := prev1.High
-		if prev2.High.Amount() > maxPrice.Amount() {
-			maxPrice = prev2.High
-		}
-		if current.High.Amount() < maxPrice.Amount() {
-			continue // high of the last two candles wasn't reached yet
-		}
-
-		sellOrder := domain.Order{
-			Date:      current.Date,
-			Price:     maxPrice,
-			Quantity:  buyOrder.Quantity,
-			OrderType: domain.Sell,
-		}
-		operations = append(operations, domain.Operation{
-			Date:      buyOrder.Date,
-			BuyOrder:  buyOrder,
-			SellOrder: sellOrder,
-		})
-
-		balance = sellOrder.Total()
-		holding = false
+	maxPrice := prev1.High
+	if prev2.High.Amount() > maxPrice.Amount() {
+		maxPrice = prev2.High
 	}
+	if candle.High.Amount() < maxPrice.Amount() {
+		return nil // high of the last two candles wasn't reached yet
+	}
+	return &domain.Order{
+		Date:      candle.Date,
+		Price:     maxPrice,
+		Quantity:  position.Buy.Quantity,
+		OrderType: domain.Sell,
+	}
+}
 
-	return operations
+// remember slides the window forward by candle, keeping only the most
+// recent two candles.
+func (s *TwoCandleBreakout) remember(candle domain.Candle) {
+	s.window = append(s.window, candle)
+	if len(s.window) > 2 {
+		s.window = s.window[len(s.window)-2:]
+	}
 }

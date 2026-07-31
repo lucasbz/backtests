@@ -22,6 +22,15 @@ func moneyFromFloat(f float64) money.Money {
 	return *money.New(int64(math.Round(f*100)), Currency)
 }
 
+// MoneyFromFloat is the exported form of moneyFromFloat, for callers
+// outside this package that need to convert a plain decimal value (e.g. a
+// JSON number from an API request) to money.Money - e.g. a fixed-amount
+// stop-loss's currency value. Prefer ParseMoney when the source is already
+// a string (it goes through the same rounding).
+func MoneyFromFloat(f float64) money.Money {
+	return moneyFromFloat(f)
+}
+
 // ParseMoney parses a plain decimal string (e.g. "10000.00", from a CLI
 // flag) into a money.Money in Currency.
 func ParseMoney(s string) (money.Money, error) {

@@ -1,24 +1,24 @@
 import { useEffect, useState } from 'react';
-import { ApiError, getTickerInfo, type TickerInfo } from '../api/client';
+import { ApiError, getAssetInfo, type AssetInfo } from '../api/client';
 
-export interface UseTickerInfoResult {
-  info: TickerInfo | null;
+export interface UseAssetInfoResult {
+  info: AssetInfo | null;
   loading: boolean;
   error: string | null;
 }
 
 /**
- * Fetches the imported date range for `ticker` (via `GET /api/info`)
- * whenever it changes. `ticker` may be `null` to represent "nothing
+ * Fetches the imported date range for `asset` (via `GET /api/info`)
+ * whenever it changes. `asset` may be `null` to represent "nothing
  * selected yet", in which case no request is made.
  */
-export function useTickerInfo(ticker: string | null): UseTickerInfoResult {
-  const [info, setInfo] = useState<TickerInfo | null>(null);
+export function useAssetInfo(asset: string | null): UseAssetInfoResult {
+  const [info, setInfo] = useState<AssetInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!ticker) {
+    if (!asset) {
       setInfo(null);
       setError(null);
       setLoading(false);
@@ -30,14 +30,14 @@ export function useTickerInfo(ticker: string | null): UseTickerInfoResult {
     setError(null);
     setInfo(null);
 
-    getTickerInfo(ticker)
+    getAssetInfo(asset)
       .then((result) => {
         if (cancelled) return;
         setInfo(result);
       })
       .catch((err) => {
         if (cancelled) return;
-        setError(err instanceof ApiError ? err.message : 'Unexpected error looking up ticker.');
+        setError(err instanceof ApiError ? err.message : 'Unexpected error looking up asset.');
       })
       .finally(() => {
         if (cancelled) return;
@@ -47,7 +47,7 @@ export function useTickerInfo(ticker: string | null): UseTickerInfoResult {
     return () => {
       cancelled = true;
     };
-  }, [ticker]);
+  }, [asset]);
 
   return { info, loading, error };
 }

@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/lucasbz/backtests/internal/cotahist"
+	"github.com/lucasbz/backtests/internal/domain"
 )
 
 // Fixture lines copied verbatim from resources/COTAHIST_A2010.TXT.
@@ -23,10 +26,12 @@ const (
 	fixtureFII = "012010010412ALMI11B     010FII TORRE ALCI  ER  MB   R$  000000017500000000001750000000000175000000000017500000000001750000000000000000000000000000000004000000000000000046000000000008050000000000000000009999123100000010000000000000BRALMICTF003161"
 	// BBASA31, stock option (BDI 78) - excluded, has strike/expiry populated.
 	fixtureOption = "012010010478BBASA31     070BBASE   /EJ ON      NM000R$  000000000002400000000000250000000000024000000000002400000000000250000000000000000000000000000004000000000000001800000000000000044600000000000308402010011800000010000000000000BRBBASACNOR3208"
+	// BOVA11, index/ETF fund (BDI 14).
+	fixtureBOVA11 = "012010010414BOVA11      010ISHARES BOVACI           R$  000000000685500000000069450000000006830000000000691100000000069370000000006937000000000694500106000000000000168300000000001163259800000000000000009999123100000010000000000000BRBOVACTF003100"
 )
 
 func TestParseLine_SpotStock(t *testing.T) {
-	ticker, bar, ok, err := parseLine(fixtureABCB4Spot)
+	ticker, bar, asset, ok, err := parseLine(fixtureABCB4Spot)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -50,6 +55,39 @@ func TestParseLine_SpotStock(t *testing.T) {
 	if bar != want {
 		t.Errorf("bar = %+v, want %+v", bar, want)
 	}
+
+	wantAsset := AssetInfo{
+		CompanyName:   "ABC BRASIL",
+		Specification: "PN",
+		Type:          domain.Stock,
+		ISIN:          "BRABCBACNPR4",
+	}
+	if asset != wantAsset {
+		t.Errorf("asset = %+v, want %+v", asset, wantAsset)
+	}
+}
+
+func TestParseLine_ETF(t *testing.T) {
+	ticker, _, asset, ok, err := parseLine(fixtureBOVA11)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected ok=true")
+	}
+	if ticker != "BOVA11" {
+		t.Errorf("ticker = %q, want %q", ticker, "BOVA11")
+	}
+
+	wantAsset := AssetInfo{
+		CompanyName:   "ISHARES BOVA",
+		Specification: "CI",
+		Type:          domain.ETF,
+		ISIN:          "BRBOVACTF003",
+	}
+	if asset != wantAsset {
+		t.Errorf("asset = %+v, want %+v", asset, wantAsset)
+	}
 }
 
 func TestParseLine_SuffixedVariantsExcluded(t *testing.T) {
@@ -57,7 +95,7 @@ func TestParseLine_SuffixedVariantsExcluded(t *testing.T) {
 		"fractional (F)": fixtureABCB4Fractional,
 		"forward (T)":    fixtureABCB4Forward,
 	} {
-		ticker, _, ok, err := parseLine(line)
+		ticker, _, _, ok, err := parseLine(line)
 		if err != nil {
 			t.Fatalf("%s: unexpected error: %v", name, err)
 		}
@@ -69,7 +107,7 @@ func TestParseLine_SuffixedVariantsExcluded(t *testing.T) {
 
 func TestParseLine_HeaderAndTrailerSkipped(t *testing.T) {
 	for _, line := range []string{fixtureHeader, fixtureTrailer} {
-		ticker, _, ok, err := parseLine(line)
+		ticker, _, _, ok, err := parseLine(line)
 		if err != nil {
 			t.Fatalf("unexpected error for %q: %v", line[:2], err)
 		}
@@ -84,7 +122,7 @@ func TestParseLine_ExcludedInstrumentTypes(t *testing.T) {
 		"FII":    fixtureFII,
 		"option": fixtureOption,
 	} {
-		ticker, _, ok, err := parseLine(line)
+		ticker, _, _, ok, err := parseLine(line)
 		if err != nil {
 			t.Fatalf("%s: unexpected error: %v", name, err)
 		}
@@ -96,12 +134,64 @@ func TestParseLine_ExcludedInstrumentTypes(t *testing.T) {
 
 func TestParseLine_MalformedRecord(t *testing.T) {
 	truncated := fixtureABCB4Spot[:100]
-	_, _, ok, err := parseLine(truncated)
+	_, _, _, ok, err := parseLine(truncated)
 	if err == nil {
 		t.Fatalf("expected error for truncated record")
 	}
 	if ok {
 		t.Errorf("expected ok=false alongside error")
+	}
+}
+
+func TestSpecificationOf(t *testing.T) {
+	cases := []struct {
+		especi string
+		want   string
+	}{
+		{"PN", "PN"},
+		{"PN  EJ  N2", "PN"},
+		{"ON      NM", "ON"},
+		{"UNT     N2", "UNT"},
+		{"DR3", "DR3"},
+		{"CI *", "CI"},
+		{"PNA*", "PNA*"},
+		{"", ""},
+		{"   ", ""},
+	}
+	for _, c := range cases {
+		if got := specificationOf(c.especi); got != c.want {
+			t.Errorf("specificationOf(%q) = %q, want %q", c.especi, got, c.want)
+		}
+	}
+}
+
+func TestDeriveAssetType(t *testing.T) {
+	cases := []struct {
+		name   string
+		bdi    string
+		especi string
+		want   domain.AssetType
+	}{
+		{"stock, ordinary", "02", "ON      NM", domain.Stock},
+		{"stock, preferred", "02", "PN", domain.Stock},
+		{"stock, preferred class A", "08", "PNA*", domain.Stock},
+		{"judicial recovery stock", "08", "ON", domain.Stock},
+		{"concordata stock", "06", "PN", domain.Stock},
+		{"catch-all admin regime stock", "58", "ON", domain.Stock},
+		{"unit", "02", "UNT     N2", domain.Unit},
+		{"bdr, DR3", "02", "DR3", domain.BDR},
+		{"bdr, DRN", "02", "DRN     MB", domain.BDR},
+		{"etf, CI", "14", "CI", domain.ETF},
+		{"etf bucket, non-ETF rider (CEPAC)", "14", "CPA FLI MB", domain.ETF},
+		{"one-off index ticker outside BDI 14", "02", "IBO", domain.Other},
+		{"unrecognized specification", "02", "", domain.Other},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := deriveAssetType(c.bdi, c.especi); got != c.want {
+				t.Errorf("deriveAssetType(%q, %q) = %q, want %q", c.bdi, c.especi, got, c.want)
+			}
+		})
 	}
 }
 
@@ -113,16 +203,17 @@ func TestParseFile_GroupsByTicker(t *testing.T) {
 		fixtureABCB4Forward,
 		fixtureFII,
 		fixtureOption,
+		fixtureBOVA11,
 		fixtureTrailer,
 	}, "\n")
 
-	grouped, err := parseFile(strings.NewReader(input))
+	grouped, assets, err := parseFile(strings.NewReader(input))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(grouped) != 1 {
-		t.Fatalf("got %d tickers, want 1: %v", len(grouped), keysOf(grouped))
+	if len(grouped) != 2 {
+		t.Fatalf("got %d tickers, want 2: %v", len(grouped), keysOf(grouped))
 	}
 	if len(grouped["ABCB4"]) != 1 {
 		t.Errorf("ABCB4 bars = %d, want 1", len(grouped["ABCB4"]))
@@ -138,6 +229,16 @@ func TestParseFile_GroupsByTicker(t *testing.T) {
 	}
 	if _, present := grouped["BBASA31"]; present {
 		t.Errorf("BBASA31 (option) should have been excluded")
+	}
+
+	if len(assets) != 2 {
+		t.Fatalf("got %d assets, want 2: %v", len(assets), assets)
+	}
+	if got, want := assets["ABCB4"].Type, domain.Stock; got != want {
+		t.Errorf("ABCB4 asset type = %q, want %q", got, want)
+	}
+	if got, want := assets["BOVA11"].Type, domain.ETF; got != want {
+		t.Errorf("BOVA11 asset type = %q, want %q", got, want)
 	}
 }
 
@@ -236,4 +337,108 @@ func readBarsFile(t *testing.T, dir, ticker, year string) []Bar {
 		t.Fatalf("unmarshaling %s: %v", path, err)
 	}
 	return bars
+}
+
+func TestLoadExistingAssets_MissingFileReturnsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	got, err := loadExistingAssets(filepath.Join(dir, cotahist.AssetsFileName))
+	if err != nil {
+		t.Fatalf("loadExistingAssets: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("got %v, want empty", got)
+	}
+}
+
+func TestMergeAssets_UpsertsKnownFieldsAndPreservesUnknownOnes(t *testing.T) {
+	existing := map[string]map[string]any{
+		"PETR4": {
+			"companyName":   "OLD NAME",
+			"specification": "PN",
+			"type":          "stock",
+			"isin":          "OLDISIN",
+			// Hand-added enrichment the importer doesn't know about - must
+			// survive the merge untouched.
+			"sector": "Oil & Gas",
+		},
+	}
+	updates := map[string]AssetInfo{
+		"PETR4": {
+			CompanyName:   "PETROBRAS",
+			Specification: "PN",
+			Type:          domain.Stock,
+			ISIN:          "BRPETRACNPR6",
+		},
+		"BOVA11": {
+			CompanyName:   "ISHARES BOVESPA",
+			Specification: "CI",
+			Type:          domain.ETF,
+			ISIN:          "BRBOVACTF008",
+		},
+	}
+
+	got := mergeAssets(existing, updates)
+
+	petr4 := got["PETR4"]
+	if petr4["companyName"] != "PETROBRAS" {
+		t.Errorf("PETR4 companyName = %v, want PETROBRAS (should be refreshed)", petr4["companyName"])
+	}
+	if petr4["isin"] != "BRPETRACNPR6" {
+		t.Errorf("PETR4 isin = %v, want BRPETRACNPR6 (should be refreshed)", petr4["isin"])
+	}
+	if petr4["sector"] != "Oil & Gas" {
+		t.Errorf("PETR4 sector = %v, want it preserved as %q", petr4["sector"], "Oil & Gas")
+	}
+
+	bova11 := got["BOVA11"]
+	if bova11["companyName"] != "ISHARES BOVESPA" {
+		t.Errorf("BOVA11 companyName = %v, want it to be added fresh", bova11["companyName"])
+	}
+}
+
+func TestUpdateAssetsFile_BootstrapThenEnrichThenReimportPreservesEnrichment(t *testing.T) {
+	dir := t.TempDir()
+
+	// First import run: bootstraps assets.json from scratch.
+	first := map[string]AssetInfo{
+		"PETR4": {CompanyName: "PETROBRAS", Specification: "PN", Type: domain.Stock, ISIN: "BRPETRACNPR6"},
+	}
+	if err := updateAssetsFile(dir, first); err != nil {
+		t.Fatalf("first updateAssetsFile: %v", err)
+	}
+
+	assetsPath := filepath.Join(dir, cotahist.AssetsFileName)
+	raw, err := loadExistingAssets(assetsPath)
+	if err != nil {
+		t.Fatalf("loadExistingAssets: %v", err)
+	}
+	if raw["PETR4"]["companyName"] != "PETROBRAS" {
+		t.Fatalf("bootstrapped PETR4 = %+v, want companyName PETROBRAS", raw["PETR4"])
+	}
+
+	// Simulate a hand-edit adding a field the importer doesn't produce.
+	raw["PETR4"]["sector"] = "Oil & Gas"
+	if err := writeAssets(assetsPath, raw); err != nil {
+		t.Fatalf("writeAssets: %v", err)
+	}
+
+	// Second import run (e.g. a new year's COTAHIST file for the same
+	// ticker): must not clobber the hand-added "sector" field.
+	second := map[string]AssetInfo{
+		"PETR4": {CompanyName: "PETROBRAS", Specification: "PN", Type: domain.Stock, ISIN: "BRPETRACNPR6"},
+	}
+	if err := updateAssetsFile(dir, second); err != nil {
+		t.Fatalf("second updateAssetsFile: %v", err)
+	}
+
+	final, err := loadExistingAssets(assetsPath)
+	if err != nil {
+		t.Fatalf("loadExistingAssets: %v", err)
+	}
+	if final["PETR4"]["sector"] != "Oil & Gas" {
+		t.Errorf("PETR4 sector = %v, want it preserved as %q across re-import", final["PETR4"]["sector"], "Oil & Gas")
+	}
+	if final["PETR4"]["companyName"] != "PETROBRAS" {
+		t.Errorf("PETR4 companyName = %v, want PETROBRAS", final["PETR4"]["companyName"])
+	}
 }

@@ -50,33 +50,33 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 // -- GET /api/info --------------------------------------------------------
 
-export interface TickerInfo {
-  ticker: string;
+export interface AssetInfo {
+  asset: string;
   earliest: string; // YYYY-MM-DD
   latest: string; // YYYY-MM-DD
 }
 
-export function getTickerInfo(ticker: string): Promise<TickerInfo> {
-  const params = new URLSearchParams({ ticker });
-  return request<TickerInfo>(`/info?${params.toString()}`);
+export function getAssetInfo(asset: string): Promise<AssetInfo> {
+  const params = new URLSearchParams({ asset });
+  return request<AssetInfo>(`/info?${params.toString()}`);
 }
 
-// -- GET /api/tickers -------------------------------------------------------
+// -- GET /api/assets -------------------------------------------------------
 
-export interface TickersResponse {
+export interface AssetsResponse {
   stocks: string[];
   others: string[];
 }
 
 /**
- * List available tickers, optionally filtered to those with data for a
+ * List available assets, optionally filtered to those with data for a
  * given year. `stocks` holds common equities, `others` holds
  * units/ETFs/FIIs/BDRs/index-tracking tickers. Both arrays are `[]` (never
  * `null`) when nothing matches.
  */
-export function getTickers(year?: number): Promise<TickersResponse> {
+export function getAssets(year?: number): Promise<AssetsResponse> {
   const params = year !== undefined ? `?${new URLSearchParams({ year: String(year) }).toString()}` : '';
-  return request<TickersResponse>(`/tickers${params}`);
+  return request<AssetsResponse>(`/assets${params}`);
 }
 
 // -- GET /api/strategies ---------------------------------------------------
@@ -87,14 +87,32 @@ export function getStrategies(): Promise<string[]> {
   return request<string[]>('/strategies');
 }
 
+// -- GET /api/stop-losses ---------------------------------------------------
+
+// Bare array of stop-loss type name strings, sorted alphabetically (e.g.
+// `["fixed-amount", "percent"]`).
+export function getStopLosses(): Promise<string[]> {
+  return request<string[]>('/stop-losses');
+}
+
 // -- POST /api/backtest -----------------------------------------------------
 
+export interface StopLossRequest {
+  // One of the names returned by `GET /api/stop-losses`.
+  type: string;
+  // Meaning depends on `type` (percent below entry price, or a fixed BRL
+  // amount below entry price). Must be > 0.
+  value: number;
+}
+
 export interface BacktestRequest {
-  ticker: string;
+  asset: string;
   start: string; // YYYY-MM-DD
   end: string; // YYYY-MM-DD
   strategy: string;
   balance: string;
+  // Omit entirely for no stop-loss (the default, unchanged behavior).
+  stopLoss?: StopLossRequest;
   verbose: boolean;
 }
 

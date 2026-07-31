@@ -9,10 +9,31 @@
 
 .app__header {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--space-4);
   margin-bottom: var(--space-8);
+}
+
+.app__header-controls {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.app__balance {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.app__balance label {
+  font-size: 14px;
+  color: var(--text);
 }
 
 .app__main {

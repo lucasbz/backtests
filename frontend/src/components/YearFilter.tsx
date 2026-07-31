@@ -1,6 +1,6 @@
 import './YearFilter.css';
 
-// The ticker list only has imported data within this range; keep it in sync
+// The asset list only has imported data within this range; keep it in sync
 // with the actual imported dataset if that ever changes. There is no API
 // endpoint to discover the range dynamically, so it's hardcoded here.
 const EARLIEST_YEAR = 2010;
@@ -19,8 +19,8 @@ export interface YearFilterProps {
 }
 
 /**
- * Lets the user restrict the ticker list (see `TickerList`) to symbols that
- * have imported data for a given year, via `GET /api/tickers?year=`.
+ * Lets the user restrict the asset list (see `AssetList`) to symbols that
+ * have imported data for a given year, via `GET /api/assets?year=`.
  * "All" (the default) omits the `year` param entirely.
  */
 export function YearFilter({ value, onChange }: YearFilterProps) {

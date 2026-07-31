@@ -1,25 +1,25 @@
 import { useEffect, useState } from 'react';
-import { ApiError, getTickers, type TickersResponse } from '../api/client';
+import { ApiError, getAssets, type AssetsResponse } from '../api/client';
 import type { YearFilterValue } from '../components/YearFilter';
 
-export interface UseTickerListResult {
+export interface UseAssetListResult {
   stocks: string[];
   others: string[];
   loading: boolean;
   error: string | null;
 }
 
-const EMPTY_TICKERS: TickersResponse = { stocks: [], others: [] };
+const EMPTY_ASSETS: AssetsResponse = { stocks: [], others: [] };
 
 /**
- * Fetches the available tickers (via `GET /api/tickers`) for `year`,
+ * Fetches the available assets (via `GET /api/assets`) for `year`,
  * splitting them into `stocks` and `others` as returned by the API. This is
  * the single fetch shared by the "Stocks" and "Others" columns in
- * `TickerBrowser` - each column does its own local search-filtering over
+ * `AssetBrowser` - each column does its own local search-filtering over
  * the slice it's handed, but neither calls the API itself.
  */
-export function useTickerList(year: YearFilterValue): UseTickerListResult {
-  const [tickers, setTickers] = useState<TickersResponse>(EMPTY_TICKERS);
+export function useAssetList(year: YearFilterValue): UseAssetListResult {
+  const [assets, setAssets] = useState<AssetsResponse>(EMPTY_ASSETS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,14 +28,14 @@ export function useTickerList(year: YearFilterValue): UseTickerListResult {
     setLoading(true);
     setError(null);
 
-    getTickers(year === 'all' ? undefined : year)
+    getAssets(year === 'all' ? undefined : year)
       .then((result) => {
         if (cancelled) return;
-        setTickers(result);
+        setAssets(result);
       })
       .catch((err) => {
         if (cancelled) return;
-        setError(err instanceof ApiError ? err.message : 'Could not load tickers.');
+        setError(err instanceof ApiError ? err.message : 'Could not load assets.');
       })
       .finally(() => {
         if (cancelled) return;
@@ -48,8 +48,8 @@ export function useTickerList(year: YearFilterValue): UseTickerListResult {
   }, [year]);
 
   return {
-    stocks: tickers.stocks,
-    others: tickers.others,
+    stocks: assets.stocks,
+    others: assets.others,
     loading,
     error,
   };

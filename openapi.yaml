@@ -29,7 +29,7 @@ info:
         unparseable date/number, unknown strategy name, non-positive
         balance).
       - `404` - the request was well-formed but referred to something that
-        doesn't exist (currently: an unimported/unknown ticker on
+        doesn't exist (currently: an unimported/unknown asset on
         `GET /api/info`).
       - `500` - unexpected server-side failure.
   version: "1.0.0"
@@ -42,41 +42,41 @@ paths:
   /api/info:
     get:
       operationId: getInfo
-      summary: Look up the available imported date range for a ticker.
+      summary: Look up the available imported date range for an asset.
       parameters:
-        - name: ticker
+        - name: asset
           in: query
           required: true
-          description: Ticker to look up, e.g. `PETR4`.
+          description: Ticker of the asset to look up, e.g. `PETR4`.
           schema:
             type: string
       responses:
         "200":
-          description: The ticker's imported date range.
+          description: The asset's imported date range.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/InfoResponse"
               example:
-                ticker: PETR4
+                asset: PETR4
                 earliest: "2010-01-04"
                 latest: "2026-07-30"
         "400":
-          description: Missing/empty `ticker` query param.
+          description: Missing/empty `asset` query param.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
               example:
-                error: ticker is required
+                error: asset is required
         "404":
-          description: The ticker has no imported data.
+          description: The asset has no imported data.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
               example:
-                error: no data found for ticker "NOPE9" (not imported yet?)
+                error: no data found for asset "NOPE9" (not imported yet?)
         "500":
           description: Unexpected server-side failure.
           content:
@@ -84,12 +84,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /api/tickers:
+  /api/assets:
     get:
-      operationId: listTickers
+      operationId: listAssets
       summary: >
-        List available tickers, optionally filtered to a specific year and,
-        when filtered, sorted by that year's trading volume.
+        List available assets (by ticker), optionally filtered to a
+        specific year and, when filtered, sorted by that year's trading
+        volume.
       parameters:
         - name: year
           in: query
@@ -106,20 +107,26 @@ paths:
           description: >
             Tickers split into two groups: `stocks` (common equities, i.e.
             ordinary/preferred share classes) and `others` (units, ETFs,
-            FIIs, BDRs, index-tracking tickers, etc). Both arrays are `[]`
-            (not `null`) when nothing matches - there is no `404` case for
-            this endpoint. Sort order within each array depends on `year`:
-            with no `year` filter, tickers are sorted alphabetically
-            (there's no single year's volume to rank them by); with a
-            `year` filter, tickers are sorted by that year's total trading
-            volume, descending (most-traded first, ties broken
-            alphabetically). Classification is a simplification based on
-            the ticker's trailing digits (3-8 = stock, 11/other = other) -
-            see `cotahist.IsStock`.
+            BDRs, index-tracking tickers, etc). Both arrays are `[]` (not
+            `null`) when nothing matches - there is no `404` case for this
+            endpoint. Sort order within each array depends on `year`: with
+            no `year` filter, tickers are sorted alphabetically (there's no
+            single year's volume to rank them by); with a `year` filter,
+            tickers are sorted by that year's total trading volume,
+            descending (most-traded first, ties broken alphabetically).
+
+
+            Classification comes from `resources/cotahist/assets.json` (see
+            `scripts/import_cotahist.go`, which bootstraps and enriches
+            it from COTAHIST data on import): a ticker lands in `stocks`
+            when its registry entry's `type` is `"stock"`, and in `others`
+            otherwise - including when the ticker has no registry entry at
+            all (e.g. it was imported before assets.json existed and the
+            importer hasn't been re-run since).
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TickersResponse"
+                $ref: "#/components/schemas/AssetsResponse"
               example:
                 stocks: ["ITUB4", "PETR3", "PETR4", "VALE3"]
                 others: ["BOVA11", "IBOV11"]
@@ -160,6 +167,29 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/stop-losses:
+    get:
+      operationId: listStopLosses
+      summary: List the type names accepted by `stopLoss.type` on `POST /api/backtest`.
+      responses:
+        "200":
+          description: >
+            A JSON array of stop-loss type name strings, sorted
+            alphabetically.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+              example: ["fixed-amount", "none", "percent"]
+        "500":
+          description: Unexpected server-side failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/backtest:
     post:
       operationId: runBacktest
@@ -171,11 +201,14 @@ paths:
             schema:
               $ref: "#/components/schemas/BacktestRequest"
             example:
-              ticker: PETR4
+              asset: PETR4
               start: "2015-01-02"
               end: "2015-12-30"
               strategy: buy-and-hold
               balance: "10000.00"
+              stopLoss:
+                type: percent
+                value: 5
               verbose: true
       responses:
         "200":
@@ -212,16 +245,18 @@ paths:
             Invalid input. Possible messages include (not exhaustive):
             missing required field(s), malformed JSON body, unparseable
             `balance`, non-positive `balance`, unknown `strategy`,
-            unparseable `start`/`end`.
+            unparseable `start`/`end`, a `stopLoss` present without a
+            `type`, an unknown `stopLoss.type`, or a `stopLoss.value`
+            invalid for that type (e.g. zero/negative).
 
 
-            Note: an unknown/not-yet-imported `ticker` on
+            Note: an unknown/not-yet-imported `asset` on
             `POST /api/backtest` does **not** currently produce a `404` the
             way `GET /api/info` does - it silently runs with zero quotes,
             producing a `200` result with `totalOperations: 0`, `gains: 0`,
             `losses: 0`, `operations` empty (or omitted), and `endingBalance`
             equal to `startingBalance`. This mirrors the CLI's existing behavior
-            (`backtest` doesn't pre-check the ticker via `info`).
+            (`backtest` doesn't pre-check the asset via `info`).
           content:
             application/json:
               schema:
@@ -229,7 +264,7 @@ paths:
               examples:
                 missingFields:
                   value:
-                    error: "ticker, start, end, strategy and balance are all required"
+                    error: "asset, start, end, strategy and balance are all required"
                 invalidJSON:
                   value:
                     error: "invalid JSON body: ..."
@@ -245,6 +280,15 @@ paths:
                 invalidDate:
                   value:
                     error: "parsing start: parsing time \"not-a-date\" as \"2006-01-02\": ..."
+                missingStopLossType:
+                  value:
+                    error: "stopLoss.type is required when stopLoss is present"
+                unknownStopLossType:
+                  value:
+                    error: "unknown stop-loss type \"nope\", available: fixed-amount, none, percent"
+                invalidStopLossValue:
+                  value:
+                    error: "percent stop-loss value must be greater than zero, got 0"
         "500":
           description: >
             Unexpected failure reading/computing over already-validated
@@ -269,10 +313,11 @@ components:
 
     InfoResponse:
       type: object
-      required: [ticker, earliest, latest]
+      required: [asset, earliest, latest]
       properties:
-        ticker:
+        asset:
           type: string
+          description: Echoes the request's `asset` query param.
           example: PETR4
         earliest:
           type: string
@@ -283,7 +328,7 @@ components:
           format: date
           example: "2026-07-30"
 
-    TickersResponse:
+    AssetsResponse:
       type: object
       required: [stocks, others]
       properties:
@@ -298,19 +343,19 @@ components:
         others:
           type: array
           description: >
-            Everything else - units, ETFs, FIIs, BDRs, index-tracking
-            tickers, e.g. `IBOV11`, `BOVA11`.
+            Everything else - units, ETFs, BDRs, index-tracking tickers,
+            e.g. `IBOV11`, `BOVA11`.
           items:
             type: string
           example: ["BOVA11", "IBOV11"]
 
     BacktestRequest:
       type: object
-      required: [ticker, start, end, strategy, balance]
+      required: [asset, start, end, strategy, balance]
       properties:
-        ticker:
+        asset:
           type: string
-          description: Ticker to backtest, e.g. `PETR4`. Must already be imported.
+          description: Ticker of the asset to backtest, e.g. `PETR4`. Must already be imported.
           example: PETR4
         start:
           type: string
@@ -335,11 +380,44 @@ components:
             Must be > 0. Sent as a string (not a number) to avoid float
             precision issues, same as the CLI's `-balance` flag.
           example: "10000.00"
+        stopLoss:
+          $ref: "#/components/schemas/StopLossRequest"
         verbose:
           type: boolean
           default: false
           description: >
             When `true`, the response includes the `operations` array.
+
+    StopLossRequest:
+      type: object
+      nullable: true
+      description: >
+        Optional risk control raced against the strategy's own exit signal:
+        once a position is open, whichever fires first on a candle - the
+        strategy's own signal, or the stop-loss's - closes the position,
+        with the stop-loss winning on a same-candle tie. Omit `stopLoss`
+        entirely for no stop-loss (the default) - this is unchanged
+        existing behavior, not a new requirement. Alternatively, set
+        `type: none` for the same effect as an explicit, selectable type
+        (e.g. useful for a frontend that always sends a `stopLoss` object).
+      required: [type, value]
+      properties:
+        type:
+          type: string
+          description: >
+            One of the names returned by `GET /api/stop-losses`.
+          example: percent
+        value:
+          type: number
+          description: >
+            Meaning depends on `type`:
+              - `percent`: a percentage below the entry price, e.g. `5` for
+                5%. Must be > 0.
+              - `fixed-amount`: a currency amount below the entry price, in
+                BRL major units, e.g. `2.5` for R$2.50. Must be > 0.
+              - `none`: unused - there's no trigger to configure. Must be
+                `0` (or omitted, which is the same as `0`).
+          example: 5
 
     Order:
       type: object

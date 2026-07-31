@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/lucasbz/backtests/internal/cotahist"
+	"github.com/lucasbz/backtests/internal/domain"
 )
 
 func doRequest(t *testing.T, method, target string, body []byte) *httptest.ResponseRecorder {
@@ -38,22 +39,22 @@ func chdirToRepoRoot(t *testing.T) {
 
 func TestHandleInfo_Valid(t *testing.T) {
 	chdirToRepoRoot(t)
-	rec := doRequest(t, http.MethodGet, "/api/info?ticker=PETR4", nil)
+	rec := doRequest(t, http.MethodGet, "/api/info?asset=PETR4", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 
 	var resp infoResponse
 	decodeJSON(t, rec, &resp)
-	if resp.Ticker != "PETR4" {
-		t.Errorf("Ticker = %q, want %q", resp.Ticker, "PETR4")
+	if resp.Asset != "PETR4" {
+		t.Errorf("Asset = %q, want %q", resp.Asset, "PETR4")
 	}
 	if resp.Earliest == "" || resp.Latest == "" {
 		t.Errorf("Earliest/Latest should not be empty, got %+v", resp)
 	}
 }
 
-func TestHandleInfo_MissingTicker(t *testing.T) {
+func TestHandleInfo_MissingAsset(t *testing.T) {
 	rec := doRequest(t, http.MethodGet, "/api/info", nil)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
@@ -66,8 +67,8 @@ func TestHandleInfo_MissingTicker(t *testing.T) {
 	}
 }
 
-func TestHandleInfo_UnknownTicker(t *testing.T) {
-	rec := doRequest(t, http.MethodGet, "/api/info?ticker=DOESNOTEXIST9", nil)
+func TestHandleInfo_UnknownAsset(t *testing.T) {
+	rec := doRequest(t, http.MethodGet, "/api/info?asset=DOESNOTEXIST9", nil)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusNotFound, rec.Body.String())
 	}
@@ -98,8 +99,27 @@ func TestHandleStrategies(t *testing.T) {
 	}
 }
 
+func TestHandleStopLosses(t *testing.T) {
+	rec := doRequest(t, http.MethodGet, "/api/stop-losses", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var names []string
+	decodeJSON(t, rec, &names)
+	found := false
+	for _, name := range names {
+		if name == "percent" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("stop-losses = %v, want it to contain %q", names, "percent")
+	}
+}
+
 func TestHandleBacktest_Valid(t *testing.T) {
-	body := []byte(`{"ticker":"PETR4","start":"2015-01-02","end":"2015-12-30","strategy":"buy-and-hold","balance":"10000.00"}`)
+	body := []byte(`{"asset":"PETR4","start":"2015-01-02","end":"2015-12-30","strategy":"buy-and-hold","balance":"10000.00"}`)
 	rec := doRequest(t, http.MethodPost, "/api/backtest", body)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
@@ -127,7 +147,7 @@ func TestHandleBacktest_Valid(t *testing.T) {
 
 func TestHandleBacktest_Verbose(t *testing.T) {
 	chdirToRepoRoot(t)
-	body := []byte(`{"ticker":"PETR4","start":"2015-01-02","end":"2015-12-30","strategy":"buy-and-hold","balance":"10000.00","verbose":true}`)
+	body := []byte(`{"asset":"PETR4","start":"2015-01-02","end":"2015-12-30","strategy":"buy-and-hold","balance":"10000.00","verbose":true}`)
 	rec := doRequest(t, http.MethodPost, "/api/backtest", body)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
@@ -160,7 +180,7 @@ func TestHandleBacktest_Verbose(t *testing.T) {
 }
 
 func TestHandleBacktest_MissingFields(t *testing.T) {
-	rec := doRequest(t, http.MethodPost, "/api/backtest", []byte(`{"ticker":"PETR4"}`))
+	rec := doRequest(t, http.MethodPost, "/api/backtest", []byte(`{"asset":"PETR4"}`))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
@@ -174,7 +194,7 @@ func TestHandleBacktest_InvalidJSON(t *testing.T) {
 }
 
 func TestHandleBacktest_InvalidBalance(t *testing.T) {
-	body := []byte(`{"ticker":"PETR4","start":"2015-01-02","end":"2015-12-30","strategy":"buy-and-hold","balance":"not-a-number"}`)
+	body := []byte(`{"asset":"PETR4","start":"2015-01-02","end":"2015-12-30","strategy":"buy-and-hold","balance":"not-a-number"}`)
 	rec := doRequest(t, http.MethodPost, "/api/backtest", body)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
@@ -182,7 +202,7 @@ func TestHandleBacktest_InvalidBalance(t *testing.T) {
 }
 
 func TestHandleBacktest_ZeroBalance(t *testing.T) {
-	body := []byte(`{"ticker":"PETR4","start":"2015-01-02","end":"2015-12-30","strategy":"buy-and-hold","balance":"0"}`)
+	body := []byte(`{"asset":"PETR4","start":"2015-01-02","end":"2015-12-30","strategy":"buy-and-hold","balance":"0"}`)
 	rec := doRequest(t, http.MethodPost, "/api/backtest", body)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
@@ -190,34 +210,82 @@ func TestHandleBacktest_ZeroBalance(t *testing.T) {
 }
 
 func TestHandleBacktest_UnknownStrategy(t *testing.T) {
-	body := []byte(`{"ticker":"PETR4","start":"2015-01-02","end":"2015-12-30","strategy":"does-not-exist","balance":"10000.00"}`)
+	body := []byte(`{"asset":"PETR4","start":"2015-01-02","end":"2015-12-30","strategy":"does-not-exist","balance":"10000.00"}`)
 	rec := doRequest(t, http.MethodPost, "/api/backtest", body)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 }
 
-// allTickers flattens a tickersResponse's stocks/others back into a single
+func TestHandleBacktest_WithStopLoss(t *testing.T) {
+	chdirToRepoRoot(t)
+	body := []byte(`{"asset":"PETR4","start":"2015-01-02","end":"2015-12-30","strategy":"two-candle-breakout","balance":"10000.00","stopLoss":{"type":"percent","value":5},"verbose":true}`)
+	rec := doRequest(t, http.MethodPost, "/api/backtest", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if _, ok := resp["totalOperations"].(float64); !ok {
+		t.Fatalf("totalOperations missing or not a number, got %v", resp["totalOperations"])
+	}
+}
+
+func TestHandleBacktest_UnknownStopLossType(t *testing.T) {
+	body := []byte(`{"asset":"PETR4","start":"2015-01-02","end":"2015-12-30","strategy":"buy-and-hold","balance":"10000.00","stopLoss":{"type":"does-not-exist","value":5}}`)
+	rec := doRequest(t, http.MethodPost, "/api/backtest", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
+func TestHandleBacktest_MissingStopLossType(t *testing.T) {
+	body := []byte(`{"asset":"PETR4","start":"2015-01-02","end":"2015-12-30","strategy":"buy-and-hold","balance":"10000.00","stopLoss":{"value":5}}`)
+	rec := doRequest(t, http.MethodPost, "/api/backtest", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
+func TestHandleBacktest_NonPositiveStopLossValue(t *testing.T) {
+	body := []byte(`{"asset":"PETR4","start":"2015-01-02","end":"2015-12-30","strategy":"buy-and-hold","balance":"10000.00","stopLoss":{"type":"percent","value":0}}`)
+	rec := doRequest(t, http.MethodPost, "/api/backtest", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
+func TestHandleBacktest_NoStopLossOmitsIt(t *testing.T) {
+	chdirToRepoRoot(t)
+	body := []byte(`{"asset":"PETR4","start":"2015-01-02","end":"2015-12-30","strategy":"buy-and-hold","balance":"10000.00"}`)
+	rec := doRequest(t, http.MethodPost, "/api/backtest", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+// allAssets flattens an assetsResponse's stocks/others back into a single
 // slice, preserving stocks-then-others order, for tests that don't care
 // about the grouping itself.
-func allTickers(resp tickersResponse) []string {
+func allAssets(resp assetsResponse) []string {
 	tickers := make([]string, 0, len(resp.Stocks)+len(resp.Others))
 	tickers = append(tickers, resp.Stocks...)
 	tickers = append(tickers, resp.Others...)
 	return tickers
 }
 
-func TestHandleTickers_NoFilter(t *testing.T) {
+func TestHandleAssets_NoFilter(t *testing.T) {
 	chdirToRepoRoot(t)
-	rec := doRequest(t, http.MethodGet, "/api/tickers", nil)
+	rec := doRequest(t, http.MethodGet, "/api/assets", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 
-	var resp tickersResponse
+	var resp assetsResponse
 	decodeJSON(t, rec, &resp)
 	found := false
-	for _, ticker := range allTickers(resp) {
+	for _, ticker := range allAssets(resp) {
 		if ticker == "PETR4" {
 			found = true
 		}
@@ -227,23 +295,34 @@ func TestHandleTickers_NoFilter(t *testing.T) {
 	}
 }
 
-func TestHandleTickers_NoFilterGroupsStocksAndOthers(t *testing.T) {
+// TestHandleAssets_NoFilterGroupsStocksAndOthers checks the grouping is
+// self-consistent with the loaded asset registry (see cotahist.LoadAssets):
+// every ticker in "stocks" is registered with Type stock, and every ticker
+// in "others" is either registered with some other Type or missing from
+// the registry entirely (e.g. imported before assets.json existed).
+func TestHandleAssets_NoFilterGroupsStocksAndOthers(t *testing.T) {
 	chdirToRepoRoot(t)
-	rec := doRequest(t, http.MethodGet, "/api/tickers", nil)
+	rec := doRequest(t, http.MethodGet, "/api/assets", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 
-	var resp tickersResponse
+	var resp assetsResponse
 	decodeJSON(t, rec, &resp)
+
+	registry, err := cotahist.LoadAssetsFrom(cotahist.DefaultCotahistDir)
+	if err != nil {
+		t.Fatalf("LoadAssetsFrom: %v", err)
+	}
+
 	for _, ticker := range resp.Stocks {
-		if !cotahist.IsStock(ticker) {
-			t.Errorf("stocks contains %q, which cotahist.IsStock says is not a stock", ticker)
+		if registry[ticker].Type != domain.Stock {
+			t.Errorf("stocks contains %q, whose registry Type is %q, not %q", ticker, registry[ticker].Type, domain.Stock)
 		}
 	}
 	for _, ticker := range resp.Others {
-		if cotahist.IsStock(ticker) {
-			t.Errorf("others contains %q, which cotahist.IsStock says is a stock", ticker)
+		if registry[ticker].Type == domain.Stock {
+			t.Errorf("others contains %q, whose registry Type is %q", ticker, domain.Stock)
 		}
 	}
 	if !sort.StringsAreSorted(resp.Stocks) {
@@ -254,17 +333,17 @@ func TestHandleTickers_NoFilterGroupsStocksAndOthers(t *testing.T) {
 	}
 }
 
-func TestHandleTickers_YearFilter(t *testing.T) {
+func TestHandleAssets_YearFilter(t *testing.T) {
 	chdirToRepoRoot(t)
-	rec := doRequest(t, http.MethodGet, "/api/tickers?year=2015", nil)
+	rec := doRequest(t, http.MethodGet, "/api/assets?year=2015", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 
-	var resp tickersResponse
+	var resp assetsResponse
 	decodeJSON(t, rec, &resp)
 	found := false
-	for _, ticker := range allTickers(resp) {
+	for _, ticker := range allAssets(resp) {
 		if ticker == "PETR4" {
 			found = true
 		}
@@ -274,18 +353,18 @@ func TestHandleTickers_YearFilter(t *testing.T) {
 	}
 }
 
-// TestHandleTickers_YearFilterSortsByDescendingVolume checks the response
+// TestHandleAssets_YearFilterSortsByDescendingVolume checks the response
 // against real imported data: with a year filter, tickers must come back in
 // descending order of that year's total trading volume within each group,
 // not alphabetically.
-func TestHandleTickers_YearFilterSortsByDescendingVolume(t *testing.T) {
+func TestHandleAssets_YearFilterSortsByDescendingVolume(t *testing.T) {
 	chdirToRepoRoot(t)
-	rec := doRequest(t, http.MethodGet, "/api/tickers?year=2015", nil)
+	rec := doRequest(t, http.MethodGet, "/api/assets?year=2015", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 
-	var resp tickersResponse
+	var resp assetsResponse
 	decodeJSON(t, rec, &resp)
 	tickers := resp.Stocks
 	if len(tickers) < 2 {
@@ -327,14 +406,14 @@ func TestHandleTickers_YearFilterSortsByDescendingVolume(t *testing.T) {
 	}
 }
 
-func TestHandleTickers_YearFilterNoMatchesReturnsEmptyArrays(t *testing.T) {
+func TestHandleAssets_YearFilterNoMatchesReturnsEmptyArrays(t *testing.T) {
 	chdirToRepoRoot(t)
-	rec := doRequest(t, http.MethodGet, "/api/tickers?year=1900", nil)
+	rec := doRequest(t, http.MethodGet, "/api/assets?year=1900", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 
-	var resp tickersResponse
+	var resp assetsResponse
 	decodeJSON(t, rec, &resp)
 	if resp.Stocks == nil || len(resp.Stocks) != 0 {
 		t.Errorf("stocks = %v, want empty non-nil slice", resp.Stocks)
@@ -344,8 +423,8 @@ func TestHandleTickers_YearFilterNoMatchesReturnsEmptyArrays(t *testing.T) {
 	}
 }
 
-func TestHandleTickers_InvalidYear(t *testing.T) {
-	rec := doRequest(t, http.MethodGet, "/api/tickers?year=not-a-year", nil)
+func TestHandleAssets_InvalidYear(t *testing.T) {
+	rec := doRequest(t, http.MethodGet, "/api/assets?year=not-a-year", nil)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
@@ -358,7 +437,7 @@ func TestHandleTickers_InvalidYear(t *testing.T) {
 }
 
 func TestHandleBacktest_InvalidDate(t *testing.T) {
-	body := []byte(`{"ticker":"PETR4","start":"not-a-date","end":"2015-12-30","strategy":"buy-and-hold","balance":"10000.00"}`)
+	body := []byte(`{"asset":"PETR4","start":"not-a-date","end":"2015-12-30","strategy":"buy-and-hold","balance":"10000.00"}`)
 	rec := doRequest(t, http.MethodPost, "/api/backtest", body)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)

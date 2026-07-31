@@ -26,6 +26,24 @@
   cursor: default;
 }
 
+.strategy-comparison__field--stop-loss {
+  flex-direction: row;
+  gap: var(--space-3);
+}
+
+.strategy-comparison__stop-loss-subfield {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: 0;
+}
+
+.strategy-comparison__stop-loss-subfield label {
+  font-size: 14px;
+  color: var(--text);
+}
+
 .strategy-comparison__form button {
   grid-column: 1 / -1;
   justify-self: start;

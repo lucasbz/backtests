@@ -12,35 +12,62 @@ func approxEqual(a, b float64) bool {
 	return math.Abs(a-b) < 0.001
 }
 
-// stubStrategy is a minimal domain.Strategy for testing result compilation
-// without depending on real candle data or a concrete strategy's logic.
-type stubStrategy struct {
-	traversed  []domain.Candle
-	operations []domain.Operation
-}
-
-func (s *stubStrategy) Traverse(candle domain.Candle) { s.traversed = append(s.traversed, candle) }
-func (s *stubStrategy) Name() string                  { return "Stub" }
-func (s *stubStrategy) Operations() []domain.Operation {
-	return s.operations
-}
-
 func newMoney(amount int64) money.Money {
 	return *money.New(amount, domain.Currency)
 }
 
+func newCandle(date string, low, high int64) domain.Candle {
+	return domain.Candle{Date: date, Low: newMoney(low), High: newMoney(high)}
+}
+
+func assertOrder(t *testing.T, label string, got domain.Order, wantDate string, wantPrice, wantQuantity int64, wantType domain.OrderType) {
+	t.Helper()
+	if got.Date != wantDate {
+		t.Errorf("%s.Date = %q, want %q", label, got.Date, wantDate)
+	}
+	if got.Price.Amount() != wantPrice {
+		t.Errorf("%s.Price = %d, want %d", label, got.Price.Amount(), wantPrice)
+	}
+	if got.Quantity != wantQuantity {
+		t.Errorf("%s.Quantity = %d, want %d", label, got.Quantity, wantQuantity)
+	}
+	if got.OrderType != wantType {
+		t.Errorf("%s.OrderType = %q, want %q", label, got.OrderType, wantType)
+	}
+}
+
+// stubStrategy is a minimal, fully controllable domain.Strategy for testing
+// traverse without depending on any real strategy's trading logic.
+type stubStrategy struct {
+	decide func(candle domain.Candle, position *domain.Position, isLast bool) *domain.Order
+}
+
+func (s *stubStrategy) Name() string { return "Stub" }
+func (s *stubStrategy) Decide(candle domain.Candle, position *domain.Position, isLast bool) *domain.Order {
+	return s.decide(candle, position, isLast)
+}
+
+// stubStopLoss is a minimal, fully controllable domain.StopLoss for testing
+// traverse's OCO race.
+type stubStopLoss struct {
+	check func(candle domain.Candle, position domain.Position) *domain.Order
+}
+
+func (s *stubStopLoss) Name() string { return "Stub Stop-Loss" }
+func (s *stubStopLoss) Check(candle domain.Candle, position domain.Position) *domain.Order {
+	return s.check(candle, position)
+}
+
 func TestCompileResult_ProfitAndEndingBalance(t *testing.T) {
-	strategy := &stubStrategy{
-		operations: []domain.Operation{
-			{
-				Date:      "2010-01-04",
-				BuyOrder:  domain.Order{Date: "2010-01-04", Price: newMoney(1200), Quantity: 10, OrderType: domain.Buy},
-				SellOrder: domain.Order{Date: "2010-12-30", Price: newMoney(1500), Quantity: 10, OrderType: domain.Sell},
-			},
+	operations := []domain.Operation{
+		{
+			Date:      "2010-01-04",
+			BuyOrder:  domain.Order{Date: "2010-01-04", Price: newMoney(1200), Quantity: 10, OrderType: domain.Buy},
+			SellOrder: domain.Order{Date: "2010-12-30", Price: newMoney(1500), Quantity: 10, OrderType: domain.Sell},
 		},
 	}
 
-	result, err := compileResult(strategy, newMoney(5000))
+	result, err := compileResult("Stub", operations, newMoney(5000))
 	if err != nil {
 		t.Fatalf("compileResult: %v", err)
 	}
@@ -77,9 +104,7 @@ func TestCompileResult_ProfitAndEndingBalance(t *testing.T) {
 }
 
 func TestCompileResult_NoOperationsBreaksEven(t *testing.T) {
-	strategy := &stubStrategy{}
-
-	result, err := compileResult(strategy, newMoney(5000))
+	result, err := compileResult("Stub", nil, newMoney(5000))
 	if err != nil {
 		t.Fatalf("compileResult: %v", err)
 	}
@@ -108,16 +133,14 @@ func TestCompileResult_NoOperationsBreaksEven(t *testing.T) {
 }
 
 func TestCompileResult_ZeroStartingBalanceDoesNotPanic(t *testing.T) {
-	strategy := &stubStrategy{
-		operations: []domain.Operation{
-			{
-				BuyOrder:  domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Buy},
-				SellOrder: domain.Order{Price: newMoney(2000), Quantity: 1, OrderType: domain.Sell},
-			},
+	operations := []domain.Operation{
+		{
+			BuyOrder:  domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Buy},
+			SellOrder: domain.Order{Price: newMoney(2000), Quantity: 1, OrderType: domain.Sell},
 		},
 	}
 
-	result, err := compileResult(strategy, newMoney(0))
+	result, err := compileResult("Stub", operations, newMoney(0))
 	if err != nil {
 		t.Fatalf("compileResult: %v", err)
 	}
@@ -127,16 +150,14 @@ func TestCompileResult_ZeroStartingBalanceDoesNotPanic(t *testing.T) {
 }
 
 func TestCompileResult_Loss(t *testing.T) {
-	strategy := &stubStrategy{
-		operations: []domain.Operation{
-			{
-				BuyOrder:  domain.Order{Price: newMoney(2000), Quantity: 5, OrderType: domain.Buy},
-				SellOrder: domain.Order{Price: newMoney(1000), Quantity: 5, OrderType: domain.Sell},
-			},
+	operations := []domain.Operation{
+		{
+			BuyOrder:  domain.Order{Price: newMoney(2000), Quantity: 5, OrderType: domain.Buy},
+			SellOrder: domain.Order{Price: newMoney(1000), Quantity: 5, OrderType: domain.Sell},
 		},
 	}
 
-	result, err := compileResult(strategy, newMoney(10000))
+	result, err := compileResult("Stub", operations, newMoney(10000))
 	if err != nil {
 		t.Fatalf("compileResult: %v", err)
 	}
@@ -164,28 +185,26 @@ func TestCompileResult_Loss(t *testing.T) {
 }
 
 func TestCompileResult_MixedGainsAndLossesWithBreakEvenCountedAsGain(t *testing.T) {
-	strategy := &stubStrategy{
-		operations: []domain.Operation{
-			{ // gain: +1000
-				BuyOrder:  domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Buy},
-				SellOrder: domain.Order{Price: newMoney(2000), Quantity: 1, OrderType: domain.Sell},
-			},
-			{ // loss: -500
-				BuyOrder:  domain.Order{Price: newMoney(2000), Quantity: 1, OrderType: domain.Buy},
-				SellOrder: domain.Order{Price: newMoney(1500), Quantity: 1, OrderType: domain.Sell},
-			},
-			{ // break-even: 0, counted as a gain
-				BuyOrder:  domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Buy},
-				SellOrder: domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Sell},
-			},
-			{ // gain: +200
-				BuyOrder:  domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Buy},
-				SellOrder: domain.Order{Price: newMoney(1200), Quantity: 1, OrderType: domain.Sell},
-			},
+	operations := []domain.Operation{
+		{ // gain: +1000
+			BuyOrder:  domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Buy},
+			SellOrder: domain.Order{Price: newMoney(2000), Quantity: 1, OrderType: domain.Sell},
+		},
+		{ // loss: -500
+			BuyOrder:  domain.Order{Price: newMoney(2000), Quantity: 1, OrderType: domain.Buy},
+			SellOrder: domain.Order{Price: newMoney(1500), Quantity: 1, OrderType: domain.Sell},
+		},
+		{ // break-even: 0, counted as a gain
+			BuyOrder:  domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Buy},
+			SellOrder: domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Sell},
+		},
+		{ // gain: +200
+			BuyOrder:  domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Buy},
+			SellOrder: domain.Order{Price: newMoney(1200), Quantity: 1, OrderType: domain.Sell},
 		},
 	}
 
-	result, err := compileResult(strategy, newMoney(10000))
+	result, err := compileResult("Stub", operations, newMoney(10000))
 	if err != nil {
 		t.Fatalf("compileResult: %v", err)
 	}
@@ -202,5 +221,182 @@ func TestCompileResult_MixedGainsAndLossesWithBreakEvenCountedAsGain(t *testing.
 	// 3 gains out of 4 operations
 	if !approxEqual(result.WinRate, 75) {
 		t.Errorf("WinRate = %v, want 75", result.WinRate)
+	}
+}
+
+// TestTraverse_NoStopLoss_BuysAndSells is the baseline: with no stop-loss
+// configured (nil), traverse behaves exactly like a plain strategy-driven
+// backtest - the strategy buys while flat and sells while holding, and
+// quantity is sized from the running balance divided by the entry price.
+func TestTraverse_NoStopLoss_BuysAndSells(t *testing.T) {
+	candles := []domain.Candle{
+		newCandle("2010-01-04", 1000, 1050),
+		newCandle("2010-01-05", 1100, 1500),
+	}
+
+	strategy := &stubStrategy{
+		decide: func(candle domain.Candle, position *domain.Position, isLast bool) *domain.Order {
+			if position == nil {
+				return &domain.Order{Date: candle.Date, Price: candle.Low, OrderType: domain.Buy}
+			}
+			return &domain.Order{Date: candle.Date, Price: candle.High, OrderType: domain.Sell}
+		},
+	}
+
+	ops, err := traverse(strategy, nil, newMoney(10000), candles)
+	if err != nil {
+		t.Fatalf("traverse: %v", err)
+	}
+	if len(ops) != 1 {
+		t.Fatalf("got %d operations, want 1: %+v", len(ops), ops)
+	}
+	// 10000 / 1000 = 10 shares
+	assertOrder(t, "BuyOrder", ops[0].BuyOrder, "2010-01-04", 1000, 10, domain.Buy)
+	assertOrder(t, "SellOrder", ops[0].SellOrder, "2010-01-05", 1500, 10, domain.Sell)
+}
+
+// TestTraverse_UnclosedPositionIsDropped mirrors two-candle-breakout's
+// documented behavior: if the strategy never signals an exit, the open
+// position at the end of the candle list produces no completed operation.
+func TestTraverse_UnclosedPositionIsDropped(t *testing.T) {
+	candles := []domain.Candle{
+		newCandle("2010-01-04", 1000, 1050),
+		newCandle("2010-01-05", 1100, 1200),
+	}
+
+	strategy := &stubStrategy{
+		decide: func(candle domain.Candle, position *domain.Position, isLast bool) *domain.Order {
+			if position == nil {
+				return &domain.Order{Date: candle.Date, Price: candle.Low, OrderType: domain.Buy}
+			}
+			return nil // never exits
+		},
+	}
+
+	ops, err := traverse(strategy, nil, newMoney(10000), candles)
+	if err != nil {
+		t.Fatalf("traverse: %v", err)
+	}
+	if ops != nil {
+		t.Errorf("ops = %+v, want nil (unclosed position dropped)", ops)
+	}
+}
+
+// TestTraverse_StopLossTriggersExit checks that a configured StopLoss's
+// Check is consulted while a position is open, and closes it when the
+// strategy itself has no exit signal.
+func TestTraverse_StopLossTriggersExit(t *testing.T) {
+	candles := []domain.Candle{
+		newCandle("2010-01-04", 1000, 1050),
+		newCandle("2010-01-05", 900, 1200), // low dips to 900, below the stop
+	}
+
+	strategy := &stubStrategy{
+		decide: func(candle domain.Candle, position *domain.Position, isLast bool) *domain.Order {
+			if position == nil {
+				return &domain.Order{Date: candle.Date, Price: candle.Low, OrderType: domain.Buy}
+			}
+			return nil // strategy never wants to exit on its own in this test
+		},
+	}
+	stopLoss := &stubStopLoss{
+		check: func(candle domain.Candle, position domain.Position) *domain.Order {
+			trigger := newMoney(950) // 5% below the 1000 entry, for example
+			if candle.Low.Amount() > trigger.Amount() {
+				return nil
+			}
+			return &domain.Order{Date: candle.Date, Price: trigger, OrderType: domain.Sell}
+		},
+	}
+
+	ops, err := traverse(strategy, stopLoss, newMoney(10000), candles)
+	if err != nil {
+		t.Fatalf("traverse: %v", err)
+	}
+	if len(ops) != 1 {
+		t.Fatalf("got %d operations, want 1: %+v", len(ops), ops)
+	}
+	assertOrder(t, "SellOrder", ops[0].SellOrder, "2010-01-05", 950, 10, domain.Sell)
+}
+
+// TestTraverse_StopLossNotConsultedWhileFlat checks that StopLoss.Check is
+// never called before a position is open - it has no entry-side role (see
+// domain.StopLoss).
+func TestTraverse_StopLossNotConsultedWhileFlat(t *testing.T) {
+	candles := []domain.Candle{newCandle("2010-01-04", 1000, 1050)}
+
+	strategy := &stubStrategy{
+		decide: func(candle domain.Candle, position *domain.Position, isLast bool) *domain.Order {
+			return nil // never buys, so position always stays nil
+		},
+	}
+	checked := false
+	stopLoss := &stubStopLoss{
+		check: func(candle domain.Candle, position domain.Position) *domain.Order {
+			checked = true
+			return nil
+		},
+	}
+
+	if _, err := traverse(strategy, stopLoss, newMoney(10000), candles); err != nil {
+		t.Fatalf("traverse: %v", err)
+	}
+	if checked {
+		t.Error("StopLoss.Check was called while flat, want it only consulted while a position is open")
+	}
+}
+
+// TestTraverse_TieBreak_StopLossWinsOverStrategyExit is the documented OCO
+// default (see docs/plans/stop-loss-oco.md's "Tie-break rule"): if both the
+// strategy's own exit signal and the stop-loss fire on the same candle, the
+// stop-loss's order is the one that closes the position.
+func TestTraverse_TieBreak_StopLossWinsOverStrategyExit(t *testing.T) {
+	candles := []domain.Candle{
+		newCandle("2010-01-04", 1000, 1050),
+		newCandle("2010-01-05", 900, 1300),
+	}
+
+	strategy := &stubStrategy{
+		decide: func(candle domain.Candle, position *domain.Position, isLast bool) *domain.Order {
+			if position == nil {
+				return &domain.Order{Date: candle.Date, Price: candle.Low, OrderType: domain.Buy}
+			}
+			// strategy also wants to exit this same candle, at a different
+			// price than the stop-loss.
+			return &domain.Order{Date: candle.Date, Price: newMoney(1300), OrderType: domain.Sell}
+		},
+	}
+	stopLoss := &stubStopLoss{
+		check: func(candle domain.Candle, position domain.Position) *domain.Order {
+			return &domain.Order{Date: candle.Date, Price: newMoney(950), OrderType: domain.Sell}
+		},
+	}
+
+	ops, err := traverse(strategy, stopLoss, newMoney(10000), candles)
+	if err != nil {
+		t.Fatalf("traverse: %v", err)
+	}
+	if len(ops) != 1 {
+		t.Fatalf("got %d operations, want 1: %+v", len(ops), ops)
+	}
+	// stop-loss's 950, not the strategy's 1300, should have won the race.
+	assertOrder(t, "SellOrder", ops[0].SellOrder, "2010-01-05", 950, 10, domain.Sell)
+}
+
+func TestPickExit(t *testing.T) {
+	strategyExit := &domain.Order{Price: newMoney(100)}
+	stopExit := &domain.Order{Price: newMoney(90)}
+
+	if got := pickExit(nil, nil); got != nil {
+		t.Errorf("pickExit(nil, nil) = %+v, want nil", got)
+	}
+	if got := pickExit(strategyExit, nil); got != strategyExit {
+		t.Errorf("pickExit(strategyExit, nil) = %+v, want strategyExit", got)
+	}
+	if got := pickExit(nil, stopExit); got != stopExit {
+		t.Errorf("pickExit(nil, stopExit) = %+v, want stopExit", got)
+	}
+	if got := pickExit(strategyExit, stopExit); got != stopExit {
+		t.Errorf("pickExit(strategyExit, stopExit) = %+v, want stopExit (stop-loss wins ties)", got)
 	}
 }

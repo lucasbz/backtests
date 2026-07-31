@@ -13,11 +13,13 @@ import (
 	"github.com/lucasbz/backtests/internal/backtest"
 	"github.com/lucasbz/backtests/internal/cotahist"
 	"github.com/lucasbz/backtests/internal/domain"
+	"github.com/lucasbz/backtests/internal/stoploss"
 	"github.com/lucasbz/backtests/internal/strategies"
 )
 
 // NewHandler builds the HTTP handler for the API: GET /api/info,
-// POST /api/backtest, GET /api/strategies, GET /api/tickers.
+// POST /api/backtest, GET /api/strategies, GET /api/stop-losses,
+// GET /api/assets.
 func NewHandler() http.Handler {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -27,7 +29,8 @@ func NewHandler() http.Handler {
 	engine.GET("/api/info", handleInfo)
 	engine.POST("/api/backtest", handleBacktest)
 	engine.GET("/api/strategies", handleStrategies)
-	engine.GET("/api/tickers", handleTickers)
+	engine.GET("/api/stop-losses", handleStopLosses)
+	engine.GET("/api/assets", handleAssets)
 
 	return engine
 }
@@ -44,28 +47,28 @@ func writeError(c *gin.Context, status int, message string) {
 
 // infoResponse is the JSON shape for GET /api/info.
 type infoResponse struct {
-	Ticker   string `json:"ticker"`
+	Asset    string `json:"asset"`
 	Earliest string `json:"earliest"`
 	Latest   string `json:"latest"`
 }
 
 func handleInfo(c *gin.Context) {
-	ticker := c.Query("ticker")
-	if ticker == "" {
-		writeError(c, http.StatusBadRequest, "ticker is required")
+	asset := c.Query("asset")
+	if asset == "" {
+		writeError(c, http.StatusBadRequest, "asset is required")
 		return
 	}
 
-	earliest, latest, err := cotahist.DateRange(ticker)
+	earliest, latest, err := cotahist.DateRange(asset)
 	if err != nil {
 		// cotahist.DateRange's only failure mode is "no data found for this
-		// ticker (not imported yet?)", which is a 404, not a server error.
+		// asset (not imported yet?)", which is a 404, not a server error.
 		writeError(c, http.StatusNotFound, err.Error())
 		return
 	}
 
 	c.JSON(http.StatusOK, infoResponse{
-		Ticker:   ticker,
+		Asset:    asset,
 		Earliest: earliest,
 		Latest:   latest,
 	})
@@ -75,17 +78,25 @@ func handleStrategies(c *gin.Context) {
 	c.JSON(http.StatusOK, strategies.AvailableStrategyNamesList())
 }
 
-// tickersResponse is the JSON shape for GET /api/tickers: tickers split
-// into "stocks" (common equities) and "others" (units, ETFs, FIIs, BDRs),
-// per cotahist.IsStock. Ordering within each group is preserved from
-// cotahist.ListTickers (alphabetical, or by descending year volume when
-// `year` is given).
-type tickersResponse struct {
+// handleStopLosses lists the type names accepted by stopLoss.type on
+// POST /api/backtest - a sibling to GET /api/strategies.
+func handleStopLosses(c *gin.Context) {
+	c.JSON(http.StatusOK, stoploss.AvailableStopLossNamesList())
+}
+
+// assetsResponse is the JSON shape for GET /api/assets: tickers split into
+// "stocks" (common equities, per the loaded asset registry's Type) and
+// "others" (everything else - units, ETFs, BDRs, and any ticker missing
+// from the registry, e.g. because it was imported before assets.json
+// existed and the importer hasn't been re-run since). Ordering within each
+// group is preserved from cotahist.ListAssets (alphabetical, or by
+// descending year volume when `year` is given).
+type assetsResponse struct {
 	Stocks []string `json:"stocks"`
 	Others []string `json:"others"`
 }
 
-func handleTickers(c *gin.Context) {
+func handleAssets(c *gin.Context) {
 	year := 0
 	if raw := c.Query("year"); raw != "" {
 		parsed, err := strconv.Atoi(raw)
@@ -96,15 +107,21 @@ func handleTickers(c *gin.Context) {
 		year = parsed
 	}
 
-	tickers, err := cotahist.ListTickers(year)
+	tickers, err := cotahist.ListAssets(year)
 	if err != nil {
 		writeError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	resp := tickersResponse{Stocks: []string{}, Others: []string{}}
+	registry, err := cotahist.LoadAssets()
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	resp := assetsResponse{Stocks: []string{}, Others: []string{}}
 	for _, ticker := range tickers {
-		if cotahist.IsStock(ticker) {
+		if asset, ok := registry[ticker]; ok && asset.Type == domain.Stock {
 			resp.Stocks = append(resp.Stocks, ticker)
 		} else {
 			resp.Others = append(resp.Others, ticker)
@@ -114,14 +131,24 @@ func handleTickers(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// stopLossRequest is the optional stopLoss object on backtestRequest: a
+// type name (see GET /api/stop-losses for the accepted values) plus a
+// value whose meaning depends on that type (see
+// internal/stoploss.availableStopLosses).
+type stopLossRequest struct {
+	Type  string  `json:"type"`
+	Value float64 `json:"value"`
+}
+
 // backtestRequest is the JSON body for POST /api/backtest.
 type backtestRequest struct {
-	Ticker   string `json:"ticker"`
-	Start    string `json:"start"`
-	End      string `json:"end"`
-	Strategy string `json:"strategy"`
-	Balance  string `json:"balance"`
-	Verbose  bool   `json:"verbose"`
+	Asset    string           `json:"asset"`
+	Start    string           `json:"start"`
+	End      string           `json:"end"`
+	Strategy string           `json:"strategy"`
+	Balance  string           `json:"balance"`
+	Verbose  bool             `json:"verbose"`
+	StopLoss *stopLossRequest `json:"stopLoss"`
 }
 
 func handleBacktest(c *gin.Context) {
@@ -131,8 +158,8 @@ func handleBacktest(c *gin.Context) {
 		return
 	}
 
-	if req.Ticker == "" || req.Start == "" || req.End == "" || req.Strategy == "" || req.Balance == "" {
-		writeError(c, http.StatusBadRequest, "ticker, start, end, strategy and balance are all required")
+	if req.Asset == "" || req.Start == "" || req.End == "" || req.Strategy == "" || req.Balance == "" {
+		writeError(c, http.StatusBadRequest, "asset, start, end, strategy and balance are all required")
 		return
 	}
 
@@ -146,10 +173,25 @@ func handleBacktest(c *gin.Context) {
 		return
 	}
 
-	newStrategy, err := strategies.LoadStrategy(req.Strategy, startingBalance)
+	newStrategy, err := strategies.LoadStrategy(req.Strategy)
 	if err != nil {
 		writeError(c, http.StatusBadRequest, err.Error())
 		return
+	}
+
+	// stopLoss is optional: omitted (nil) means no stop-loss, exactly the
+	// backtest's behavior before stop-losses existed.
+	var newStopLoss domain.StopLoss
+	if req.StopLoss != nil {
+		if req.StopLoss.Type == "" {
+			writeError(c, http.StatusBadRequest, "stopLoss.type is required when stopLoss is present")
+			return
+		}
+		newStopLoss, err = stoploss.LoadStopLoss(req.StopLoss.Type, req.StopLoss.Value)
+		if err != nil {
+			writeError(c, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 
 	startDate, err := time.Parse("2006-01-02", req.Start)
@@ -164,11 +206,12 @@ func handleBacktest(c *gin.Context) {
 	}
 
 	bt := &backtest.Backtest{
-		Ticker:   req.Ticker,
+		Asset:    req.Asset,
 		Start:    startDate,
 		End:      endDate,
 		Balance:  startingBalance,
 		Strategy: newStrategy,
+		StopLoss: newStopLoss,
 	}
 
 	result, err := bt.Run()

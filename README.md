@@ -141,13 +141,21 @@ which runs `go test ./...`.
 ## Project layout
 
 - `scripts/import_cotahist.go` — parses COTAHIST files into per-ticker JSON.
-- `internal/domain` — core types: `Candle`, `Order`, `Operation`, `Strategy`.
+- `internal/domain` — core types: `Candle`, `Order`, `Operation`, `Position`,
+  `Strategy`, `StopLoss`.
 - `internal/cotahist` — loads imported candle JSON back into `domain.Candle`s,
   and looks up a ticker's available date range.
 - `internal/strategies` — concrete `domain.Strategy` implementations and the
-  `-strategy` name registry.
-- `internal/backtest` — `Backtest.Run()`: feeds a strategy its candles and
-  compiles the resulting `Result` (profit, balance, gains/losses, win rate).
+  `-strategy` name registry. Each `Strategy.Decide` is called once per
+  candle by `Backtest`, which owns the candle loop, the running balance, and
+  the currently open `Position`.
+- `internal/stoploss` — concrete `domain.StopLoss` implementations (optional
+  risk control raced against a strategy's own exit signal - see
+  [openapi.yaml](openapi.yaml)'s `stopLoss` request field) and their own
+  name registry, mirroring `internal/strategies`.
+- `internal/backtest` — `Backtest.Run()`: drives a strategy (and, if
+  configured, a stop-loss) through a ticker's candles and compiles the
+  resulting `Result` (profit, balance, gains/losses, win rate).
 - `internal/api` — JSON HTTP handlers wrapping the same operations as the CLI
   (see [openapi.yaml](openapi.yaml)).
 - `cmd/main.go` — the CLI entrypoint described above, plus the `serve`

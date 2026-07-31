@@ -1,46 +1,46 @@
-.ticker-browser {
+.asset-browser {
   display: flex;
   gap: var(--space-4);
   align-items: stretch;
 }
 
-.ticker-browser__side {
+.asset-browser__side {
   display: flex;
   align-items: flex-start;
   gap: var(--space-2);
   flex-shrink: 0;
 }
 
-.ticker-browser__side--collapsed {
+.asset-browser__side--collapsed {
   gap: 0;
 }
 
-/* Crisp hairline dividers between the ticker-list columns and the detail
+/* Crisp hairline dividers between the asset-list columns and the detail
    panel, in place of relying purely on whitespace/shadow to separate
    regions - reads closer to a trading-terminal's fixed panel layout. */
-.ticker-browser__side--left {
+.asset-browser__side--left {
   border-right: 1px solid var(--border);
   padding-right: var(--space-4);
 }
 
-.ticker-browser__side--right {
+.asset-browser__side--right {
   border-left: 1px solid var(--border);
   padding-left: var(--space-4);
 }
 
-.ticker-browser__side-list {
+.asset-browser__side-list {
   overflow: hidden;
   transition:
     width var(--transition),
     opacity var(--transition);
 }
 
-.ticker-browser__side--collapsed .ticker-browser__side-list {
+.asset-browser__side--collapsed .asset-browser__side-list {
   width: 0;
   opacity: 0;
 }
 
-.ticker-browser__toggle {
+.asset-browser__toggle {
   flex-shrink: 0;
   padding: 6px 4px;
   border-radius: var(--radius-sm);
@@ -53,18 +53,18 @@
   box-shadow: var(--shadow-sm);
 }
 
-.ticker-browser__toggle:hover:not(:disabled) {
+.asset-browser__toggle:hover:not(:disabled) {
   border-color: var(--accent-border);
   color: var(--text-h);
 }
 
-.ticker-browser__toggle[aria-pressed='true'] {
+.asset-browser__toggle[aria-pressed='true'] {
   border-color: var(--accent-border);
   background: var(--accent-bg);
   color: var(--text-h);
 }
 
-.ticker-browser__detail {
+.asset-browser__detail {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -72,7 +72,7 @@
   gap: var(--space-6);
 }
 
-.ticker-browser__empty {
+.asset-browser__empty {
   color: var(--text);
   padding: var(--space-5) 0;
 }

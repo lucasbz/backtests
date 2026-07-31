@@ -31,7 +31,7 @@
   /* Corner radius scale, applied consistently to cards/buttons/inputs.
      Kept small/sharp on purpose (trading-terminal feel rather than a
      soft consumer-SaaS card look) - no pill/fully-rounded shapes here,
-     see YearFilter.css and TickerBrowser.css for the toggle buttons that
+     see YearFilter.css and AssetBrowser.css for the toggle buttons that
      used to be pill-shaped. */
   --radius-sm: 6px;
   --radius-md: 8px;
