@@ -1,47 +1,40 @@
-import { useEffect, useState } from 'react';
-import { ApiError, getTickers } from '../api/client';
+import { useState } from 'react';
 import type { YearFilterValue } from './YearFilter';
 import './TickerList.css';
 
 export interface TickerListProps {
-  /** Restricts the list to tickers with data for this year, or 'all'. */
+  /** Heading for this column, e.g. "Stocks" or "Others". */
+  label: string;
+  /** Restricts context for the "no tickers" empty-state message. */
   year: YearFilterValue;
+  /** The tickers for this group only - already fetched/split by the caller. */
+  items: string[];
   selected: string | null;
   onSelect: (ticker: string) => void;
+  loading: boolean;
+  error: string | null;
 }
 
-export function TickerList({ year, selected, onSelect }: TickerListProps) {
-  const [tickers, setTickers] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+/**
+ * One column of the ticker browser: a heading, its own search box, and the
+ * (locally filtered) list of tickers for a single group ("Stocks" or
+ * "Others"). Two independent instances of this component are rendered by
+ * `TickerBrowser`, each with its own search state, but both are handed
+ * their slice of data from a single shared fetch (see `useTickerList`) so
+ * the ticker list itself is only ever requested once.
+ */
+export function TickerList({ label, year, items, selected, onSelect, loading, error }: TickerListProps) {
+  const [query, setQuery] = useState('');
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-
-    getTickers(year === 'all' ? undefined : year)
-      .then((list) => {
-        if (cancelled) return;
-        setTickers(list);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(err instanceof ApiError ? err.message : 'Could not load tickers.');
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [year]);
+  const hasTickers = items.length > 0;
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredItems = normalizedQuery
+    ? items.filter((ticker) => ticker.toLowerCase().includes(normalizedQuery))
+    : items;
 
   return (
     <aside className="ticker-list">
-      <h2>Tickers</h2>
+      <h2>{label}</h2>
 
       {loading && <p className="ticker-list__hint">Loading tickers…</p>}
 
@@ -51,15 +44,30 @@ export function TickerList({ year, selected, onSelect }: TickerListProps) {
         </div>
       )}
 
-      {!loading && !error && tickers.length === 0 && (
+      {!loading && !error && !hasTickers && (
         <p className="ticker-list__hint">
           {year === 'all' ? 'No tickers available.' : `No tickers have data for ${year}.`}
         </p>
       )}
 
-      {!loading && !error && tickers.length > 0 && (
+      {!loading && !error && hasTickers && (
+        <input
+          type="search"
+          className="ticker-list__search"
+          placeholder={`Search ${label.toLowerCase()}…`}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          aria-label={`Search ${label.toLowerCase()}`}
+        />
+      )}
+
+      {!loading && !error && hasTickers && filteredItems.length === 0 && (
+        <p className="ticker-list__hint">No tickers match &quot;{query.trim()}&quot;.</p>
+      )}
+
+      {!loading && !error && filteredItems.length > 0 && (
         <ul className="ticker-list__items">
-          {tickers.map((ticker) => (
+          {filteredItems.map((ticker) => (
             <li key={ticker}>
               <button
                 type="button"

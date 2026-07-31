@@ -104,20 +104,25 @@ paths:
       responses:
         "200":
           description: >
-            A sorted JSON array of ticker symbol strings. `[]` (not `null`)
-            when nothing matches - there is no `404` case for this endpoint.
-            Sort order depends on `year`: with no `year` filter, tickers are
-            sorted alphabetically (there's no single year's volume to rank
-            them by); with a `year` filter, tickers are sorted by that
-            year's total trading volume, descending (most-traded first,
-            ties broken alphabetically).
+            Tickers split into two groups: `stocks` (common equities, i.e.
+            ordinary/preferred share classes) and `others` (units, ETFs,
+            FIIs, BDRs, index-tracking tickers, etc). Both arrays are `[]`
+            (not `null`) when nothing matches - there is no `404` case for
+            this endpoint. Sort order within each array depends on `year`:
+            with no `year` filter, tickers are sorted alphabetically
+            (there's no single year's volume to rank them by); with a
+            `year` filter, tickers are sorted by that year's total trading
+            volume, descending (most-traded first, ties broken
+            alphabetically). Classification is a simplification based on
+            the ticker's trailing digits (3-8 = stock, 11/other = other) -
+            see `cotahist.IsStock`.
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  type: string
-              example: ["PETR4", "VALE3"]
+                $ref: "#/components/schemas/TickersResponse"
+              example:
+                stocks: ["ITUB4", "PETR3", "PETR4", "VALE3"]
+                others: ["BOVA11", "IBOV11"]
         "400":
           description: The `year` query param was present but not a valid integer.
           content:
@@ -277,6 +282,27 @@ components:
           type: string
           format: date
           example: "2026-07-30"
+
+    TickersResponse:
+      type: object
+      required: [stocks, others]
+      properties:
+        stocks:
+          type: array
+          description: >
+            Common equities (ordinary/preferred share classes), e.g.
+            `PETR4`, `PETR3`, `VALE3`, `ITUB4`.
+          items:
+            type: string
+          example: ["ITUB4", "PETR3", "PETR4", "VALE3"]
+        others:
+          type: array
+          description: >
+            Everything else - units, ETFs, FIIs, BDRs, index-tracking
+            tickers, e.g. `IBOV11`, `BOVA11`.
+          items:
+            type: string
+          example: ["BOVA11", "IBOV11"]
 
     BacktestRequest:
       type: object

@@ -75,6 +75,16 @@ func handleStrategies(c *gin.Context) {
 	c.JSON(http.StatusOK, strategies.AvailableStrategyNamesList())
 }
 
+// tickersResponse is the JSON shape for GET /api/tickers: tickers split
+// into "stocks" (common equities) and "others" (units, ETFs, FIIs, BDRs),
+// per cotahist.IsStock. Ordering within each group is preserved from
+// cotahist.ListTickers (alphabetical, or by descending year volume when
+// `year` is given).
+type tickersResponse struct {
+	Stocks []string `json:"stocks"`
+	Others []string `json:"others"`
+}
+
 func handleTickers(c *gin.Context) {
 	year := 0
 	if raw := c.Query("year"); raw != "" {
@@ -92,7 +102,16 @@ func handleTickers(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, tickers)
+	resp := tickersResponse{Stocks: []string{}, Others: []string{}}
+	for _, ticker := range tickers {
+		if cotahist.IsStock(ticker) {
+			resp.Stocks = append(resp.Stocks, ticker)
+		} else {
+			resp.Others = append(resp.Others, ticker)
+		}
+	}
+
+	c.JSON(http.StatusOK, resp)
 }
 
 // backtestRequest is the JSON body for POST /api/backtest.

@@ -4,7 +4,7 @@ import { YearFilter, type YearFilterValue } from './components/YearFilter';
 import './App.css';
 
 function App() {
-  const [year, setYear] = useState<YearFilterValue>('all');
+  const [year, setYear] = useState<YearFilterValue>(new Date().getFullYear());
 
   return (
     <div className="app">

@@ -197,6 +197,16 @@ func TestHandleBacktest_UnknownStrategy(t *testing.T) {
 	}
 }
 
+// allTickers flattens a tickersResponse's stocks/others back into a single
+// slice, preserving stocks-then-others order, for tests that don't care
+// about the grouping itself.
+func allTickers(resp tickersResponse) []string {
+	tickers := make([]string, 0, len(resp.Stocks)+len(resp.Others))
+	tickers = append(tickers, resp.Stocks...)
+	tickers = append(tickers, resp.Others...)
+	return tickers
+}
+
 func TestHandleTickers_NoFilter(t *testing.T) {
 	chdirToRepoRoot(t)
 	rec := doRequest(t, http.MethodGet, "/api/tickers", nil)
@@ -204,16 +214,43 @@ func TestHandleTickers_NoFilter(t *testing.T) {
 		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 
-	var tickers []string
-	decodeJSON(t, rec, &tickers)
+	var resp tickersResponse
+	decodeJSON(t, rec, &resp)
 	found := false
-	for _, ticker := range tickers {
+	for _, ticker := range allTickers(resp) {
 		if ticker == "PETR4" {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("tickers = %v, want it to contain %q", tickers, "PETR4")
+		t.Errorf("tickers = %+v, want it to contain %q", resp, "PETR4")
+	}
+}
+
+func TestHandleTickers_NoFilterGroupsStocksAndOthers(t *testing.T) {
+	chdirToRepoRoot(t)
+	rec := doRequest(t, http.MethodGet, "/api/tickers", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var resp tickersResponse
+	decodeJSON(t, rec, &resp)
+	for _, ticker := range resp.Stocks {
+		if !cotahist.IsStock(ticker) {
+			t.Errorf("stocks contains %q, which cotahist.IsStock says is not a stock", ticker)
+		}
+	}
+	for _, ticker := range resp.Others {
+		if cotahist.IsStock(ticker) {
+			t.Errorf("others contains %q, which cotahist.IsStock says is a stock", ticker)
+		}
+	}
+	if !sort.StringsAreSorted(resp.Stocks) {
+		t.Errorf("stocks = %v, want alphabetically sorted", resp.Stocks)
+	}
+	if !sort.StringsAreSorted(resp.Others) {
+		t.Errorf("others = %v, want alphabetically sorted", resp.Others)
 	}
 }
 
@@ -224,22 +261,23 @@ func TestHandleTickers_YearFilter(t *testing.T) {
 		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 
-	var tickers []string
-	decodeJSON(t, rec, &tickers)
+	var resp tickersResponse
+	decodeJSON(t, rec, &resp)
 	found := false
-	for _, ticker := range tickers {
+	for _, ticker := range allTickers(resp) {
 		if ticker == "PETR4" {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("tickers = %v, want it to contain %q", tickers, "PETR4")
+		t.Errorf("tickers = %+v, want it to contain %q", resp, "PETR4")
 	}
 }
 
 // TestHandleTickers_YearFilterSortsByDescendingVolume checks the response
 // against real imported data: with a year filter, tickers must come back in
-// descending order of that year's total trading volume, not alphabetically.
+// descending order of that year's total trading volume within each group,
+// not alphabetically.
 func TestHandleTickers_YearFilterSortsByDescendingVolume(t *testing.T) {
 	chdirToRepoRoot(t)
 	rec := doRequest(t, http.MethodGet, "/api/tickers?year=2015", nil)
@@ -247,10 +285,11 @@ func TestHandleTickers_YearFilterSortsByDescendingVolume(t *testing.T) {
 		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 
-	var tickers []string
-	decodeJSON(t, rec, &tickers)
+	var resp tickersResponse
+	decodeJSON(t, rec, &resp)
+	tickers := resp.Stocks
 	if len(tickers) < 2 {
-		t.Fatalf("expected at least 2 tickers for year 2015, got %v", tickers)
+		t.Fatalf("expected at least 2 stock tickers for year 2015, got %v", tickers)
 	}
 
 	from := time.Date(2015, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -288,14 +327,20 @@ func TestHandleTickers_YearFilterSortsByDescendingVolume(t *testing.T) {
 	}
 }
 
-func TestHandleTickers_YearFilterNoMatchesReturnsEmptyArray(t *testing.T) {
+func TestHandleTickers_YearFilterNoMatchesReturnsEmptyArrays(t *testing.T) {
 	chdirToRepoRoot(t)
 	rec := doRequest(t, http.MethodGet, "/api/tickers?year=1900", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
-	if rec.Body.String() != "[]" {
-		t.Errorf("body = %q, want %q", rec.Body.String(), "[]")
+
+	var resp tickersResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Stocks == nil || len(resp.Stocks) != 0 {
+		t.Errorf("stocks = %v, want empty non-nil slice", resp.Stocks)
+	}
+	if resp.Others == nil || len(resp.Others) != 0 {
+		t.Errorf("others = %v, want empty non-nil slice", resp.Others)
 	}
 }
 

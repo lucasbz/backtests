@@ -192,6 +192,32 @@ func ListTickersFrom(dir string, year int) ([]string, error) {
 	return tickers, nil
 }
 
+// IsStock reports whether ticker looks like a common equity (ordinary or
+// preferred share class) as opposed to a unit/ETF/FII/BDR.
+//
+// B3 ticker symbols are a 4-letter root followed by 1-2 trailing digits
+// denoting the share class/instrument type: trailing digits 3-8 denote
+// ordinary/preferred stock classes, while 11 (or any other multi-digit
+// suffix) denotes a unit, ETF, FII, or BDR. This is a simplification, not a
+// bulletproof rule - some equity "units" ending in 11 (e.g. SANB11) are
+// technically stock-adjacent but are classified here as "not a stock" along
+// with everything else ending in 11, matching the common casual convention.
+func IsStock(ticker string) bool {
+	i := len(ticker)
+	for i > 0 && ticker[i-1] >= '0' && ticker[i-1] <= '9' {
+		i--
+	}
+	digits := ticker[i:]
+	if digits == "" {
+		return false
+	}
+	n, err := strconv.Atoi(digits)
+	if err != nil {
+		return false
+	}
+	return n >= 3 && n <= 8
+}
+
 func readYearFile(dir, ticker string, year int) ([]domain.Candle, error) {
 	path := filepath.Join(dir, ticker, fmt.Sprintf("%s_%d.json", ticker, year))
 	data, err := os.ReadFile(path)

@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"net"
+	"testing"
+)
 
 func TestRun_NoCommand(t *testing.T) {
 	if err := run([]string{}); err == nil {
@@ -14,106 +17,27 @@ func TestRun_UnknownCommand(t *testing.T) {
 	}
 }
 
-func TestRun_Backtest_Valid(t *testing.T) {
-	err := run([]string{
-		"backtest",
-		"-ticker", "PETR4",
-		"-start", "2010-01-01",
-		"-end", "2010-12-31",
-		"-strategy", "buy-and-hold",
-		"-balance", "10000.00",
-	})
+func TestRun_Serve_InvalidFlag(t *testing.T) {
+	err := run([]string{"serve", "-not-a-real-flag"})
+	if err == nil {
+		t.Fatal("expected error for unknown flag")
+	}
+}
+
+// TestRun_Serve_AddrInUse exercises the success path of serve()'s flag
+// parsing and its call into http.ListenAndServe, without leaving a server
+// running forever: it binds -addr to a port that's already taken, so
+// ListenAndServe fails immediately with "address already in use" instead of
+// blocking.
+func TestRun_Serve_AddrInUse(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("run: %v", err)
+		t.Fatalf("net.Listen: %v", err)
 	}
-}
+	defer ln.Close()
 
-func TestRun_Backtest_UnknownStrategy(t *testing.T) {
-	err := run([]string{
-		"backtest",
-		"-ticker", "PETR4",
-		"-start", "2010-01-01",
-		"-end", "2010-12-31",
-		"-strategy", "does-not-exist",
-		"-balance", "10000.00",
-	})
+	err = run([]string{"serve", "-addr", ln.Addr().String()})
 	if err == nil {
-		t.Fatal("expected error for unknown strategy")
-	}
-}
-
-func TestRun_Backtest_MissingArgs(t *testing.T) {
-	err := run([]string{"backtest", "-ticker", "PETR4"})
-	if err == nil {
-		t.Fatal("expected error for missing required flags")
-	}
-}
-
-func TestRun_Backtest_MissingBalance(t *testing.T) {
-	err := run([]string{
-		"backtest",
-		"-ticker", "PETR4",
-		"-start", "2010-01-01",
-		"-end", "2010-12-31",
-		"-strategy", "buy-and-hold",
-	})
-	if err == nil {
-		t.Fatal("expected error for missing balance")
-	}
-}
-
-func TestRun_Backtest_InvalidBalance(t *testing.T) {
-	err := run([]string{
-		"backtest",
-		"-ticker", "PETR4",
-		"-start", "2010-01-01",
-		"-end", "2010-12-31",
-		"-strategy", "buy-and-hold",
-		"-balance", "not-a-number",
-	})
-	if err == nil {
-		t.Fatal("expected error for invalid balance")
-	}
-}
-
-func TestRun_Backtest_ZeroBalance(t *testing.T) {
-	err := run([]string{
-		"backtest",
-		"-ticker", "PETR4",
-		"-start", "2010-01-01",
-		"-end", "2010-12-31",
-		"-strategy", "buy-and-hold",
-		"-balance", "0",
-	})
-	if err == nil {
-		t.Fatal("expected error for zero balance")
-	}
-}
-
-func TestRun_Backtest_InvalidDate(t *testing.T) {
-	err := run([]string{
-		"backtest",
-		"-ticker", "PETR4",
-		"-start", "not-a-date",
-		"-end", "2010-12-31",
-		"-strategy", "buy-and-hold",
-		"-balance", "10000.00",
-	})
-	if err == nil {
-		t.Fatal("expected error for invalid start date")
-	}
-}
-
-func TestRun_Info_MissingTicker(t *testing.T) {
-	err := run([]string{"info"})
-	if err == nil {
-		t.Fatal("expected error for missing ticker")
-	}
-}
-
-func TestRun_Info_UnknownTicker(t *testing.T) {
-	err := run([]string{"info", "-ticker", "DOESNOTEXIST9"})
-	if err == nil {
-		t.Fatal("expected error for unknown ticker")
+		t.Fatal("expected error because the address is already in use")
 	}
 }

@@ -256,3 +256,30 @@ func TestListTickersFrom_MissingDirReturnsEmptyNotError(t *testing.T) {
 		t.Fatalf("got %v, want empty", got)
 	}
 }
+
+func TestIsStock(t *testing.T) {
+	cases := []struct {
+		ticker string
+		want   bool
+	}{
+		{"PETR4", true},
+		{"PETR3", true},
+		{"VALE3", true},
+		{"ITUB4", true},
+		{"ABCB4", true},
+		{"WEGE3", true},
+		{"IBOV11", false},
+		{"BOVA11", false},
+		{"SANB11", false}, // technically stock-adjacent, but classified as "other" per the 11-suffix convention
+		{"HGLG11", false},
+		{"BDR1", false},   // trailing digit outside 3-8
+		{"XYZW9", false},  // trailing digit outside 3-8
+		{"XYZW", false},   // no trailing digits at all
+		{"XYZW0", false},  // trailing digit outside 3-8
+	}
+	for _, c := range cases {
+		if got := IsStock(c.ticker); got != c.want {
+			t.Errorf("IsStock(%q) = %v, want %v", c.ticker, got, c.want)
+		}
+	}
+}

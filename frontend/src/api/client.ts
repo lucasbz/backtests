@@ -63,13 +63,20 @@ export function getTickerInfo(ticker: string): Promise<TickerInfo> {
 
 // -- GET /api/tickers -------------------------------------------------------
 
+export interface TickersResponse {
+  stocks: string[];
+  others: string[];
+}
+
 /**
  * List available tickers, optionally filtered to those with data for a
- * given year. Returns `[]` (never `null`) when nothing matches.
+ * given year. `stocks` holds common equities, `others` holds
+ * units/ETFs/FIIs/BDRs/index-tracking tickers. Both arrays are `[]` (never
+ * `null`) when nothing matches.
  */
-export function getTickers(year?: number): Promise<string[]> {
+export function getTickers(year?: number): Promise<TickersResponse> {
   const params = year !== undefined ? `?${new URLSearchParams({ year: String(year) }).toString()}` : '';
-  return request<string[]>(`/tickers${params}`);
+  return request<TickersResponse>(`/tickers${params}`);
 }
 
 // -- GET /api/strategies ---------------------------------------------------
