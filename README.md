@@ -29,7 +29,25 @@ Re-running the import for a year you already imported overwrites just that
 year's files — other years are left untouched, so you can import multiple
 years incrementally.
 
-## 2. Run a backtest
+## 2. Look up available data for a ticker
+
+Before backtesting, check what date range is actually imported for a ticker:
+
+```sh
+make info TICKER=PETR4
+```
+
+which runs:
+
+```sh
+go run ./cmd info -ticker PETR4
+```
+
+```
+PETR4: data available from 2010-01-04 to 2026-07-30
+```
+
+## 3. Run a backtest
 
 ```sh
 make backtest TICKER=PETR4 START=2015-01-02 END=2015-12-30 STRATEGY=buy-and-hold BALANCE=10000.00
@@ -38,7 +56,7 @@ make backtest TICKER=PETR4 START=2015-01-02 END=2015-12-30 STRATEGY=buy-and-hold
 which runs:
 
 ```sh
-go run ./cmd -ticker PETR4 -start 2015-01-02 -end 2015-12-30 -strategy buy-and-hold -balance 10000.00
+go run ./cmd backtest -ticker PETR4 -start 2015-01-02 -end 2015-12-30 -strategy buy-and-hold -balance 10000.00
 ```
 
 All of `TICKER`, `START`, `END`, `STRATEGY` and `BALANCE` have defaults in
@@ -71,7 +89,7 @@ also printed above it:
 ```
   BUY  2015-01-02 @ R$9,36 x1068
   SELL 2015-12-30 @ R$6,76 x1068
-PETR4 2015-01-02 to 2015-12-30 | Buy & Hold | Balance: R$10.000,00 -> R$7.223,20 (Profit: -R$2.776,80, -27.77%) | Gains: 0 Losses: 1 (Win rate: 0.00%)
+Running Backtest for: PETR4 2015-01-02 to 2015-12-30 | Strategy: Buy & Hold | Balance: R$10.000,00 -> R$7.223,20 (Profit: -R$2.776,80, -27.77%) | Gains: 0 Losses: 1 (Win rate: 0.00%)
 ```
 
 Without `-v`, only the summary line is printed.
@@ -93,7 +111,8 @@ which runs `go test ./...`.
 
 - `scripts/import_cotahist.go` — parses COTAHIST files into per-ticker JSON.
 - `internal/domain` — core types: `Quote`, `Order`, `Operation`, `Strategy`.
-- `internal/cotahist` — loads imported quote JSON back into `domain.Quote`s.
+- `internal/cotahist` — loads imported quote JSON back into `domain.Quote`s,
+  and looks up a ticker's available date range.
 - `internal/strategies` — concrete `domain.Strategy` implementations and the
   `-strategy` name registry.
 - `internal/backtest` — `Backtest.Run()`: feeds a strategy its quotes and

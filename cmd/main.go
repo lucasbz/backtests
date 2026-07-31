@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/lucasbz/backtests/internal/backtest"
+	"github.com/lucasbz/backtests/internal/cotahist"
 	"github.com/lucasbz/backtests/internal/domain"
 	"github.com/lucasbz/backtests/internal/strategies"
 )
@@ -19,7 +20,22 @@ func main() {
 }
 
 func run(args []string) error {
-	fs := flag.NewFlagSet("backtests", flag.ContinueOnError)
+	if len(args) == 0 {
+		return fmt.Errorf("usage: backtests <backtest|info> [flags]")
+	}
+
+	switch args[0] {
+	case "backtest":
+		return runBacktest(args[1:])
+	case "info":
+		return runInfo(args[1:])
+	default:
+		return fmt.Errorf("unknown command %q, want backtest or info", args[0])
+	}
+}
+
+func runBacktest(args []string) error {
+	fs := flag.NewFlagSet("backtest", flag.ContinueOnError)
 
 	ticker := fs.String("ticker", "", "ticker to backtest (e.g. PETR4)")
 	start := fs.String("start", "", "timeframe start date (YYYY-MM-DD)")
@@ -91,4 +107,25 @@ func printResult(ticker string, start, end time.Time, result *backtest.Result, v
 			fmt.Printf("  SELL %s @ %s x%d\n", op.SellOrder.Date, op.SellOrder.Price.Display(), op.SellOrder.Quantity)
 		}
 	}
+}
+
+func runInfo(args []string) error {
+	fs := flag.NewFlagSet("info", flag.ContinueOnError)
+	ticker := fs.String("ticker", "", "ticker to look up (e.g. PETR4)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if *ticker == "" {
+		fs.Usage()
+		return fmt.Errorf("-ticker is required")
+	}
+
+	earliest, latest, err := cotahist.DateRange(*ticker)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("%s: data available from %s to %s\n", *ticker, earliest, latest)
+	return nil
 }

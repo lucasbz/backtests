@@ -82,3 +82,39 @@ func TestLoadQuotesFrom_MissingYearFileSkipped(t *testing.T) {
 		t.Fatalf("got %d quotes, want 1: %+v", len(got), got)
 	}
 }
+
+func TestDateRangeFrom_SpansEarliestToLatestYear(t *testing.T) {
+	dir := t.TempDir()
+
+	writeQuoteFile(t, dir, "ABCB4", 2011, []domain.Quote{
+		testQuote("2011-03-10", 100),
+		testQuote("2011-09-20", 110),
+	})
+	writeQuoteFile(t, dir, "ABCB4", 2010, []domain.Quote{
+		testQuote("2010-01-04", 90),
+		testQuote("2010-12-30", 95),
+	})
+	writeQuoteFile(t, dir, "ABCB4", 2013, []domain.Quote{
+		testQuote("2013-02-01", 120),
+		testQuote("2013-11-15", 125),
+	})
+
+	earliest, latest, err := DateRangeFrom(dir, "ABCB4")
+	if err != nil {
+		t.Fatalf("DateRangeFrom: %v", err)
+	}
+	if earliest != "2010-01-04" {
+		t.Errorf("earliest = %q, want 2010-01-04", earliest)
+	}
+	if latest != "2013-11-15" {
+		t.Errorf("latest = %q, want 2013-11-15", latest)
+	}
+}
+
+func TestDateRangeFrom_UnknownTicker(t *testing.T) {
+	dir := t.TempDir()
+
+	if _, _, err := DateRangeFrom(dir, "NOPE4"); err == nil {
+		t.Fatal("expected error for unknown ticker")
+	}
+}
