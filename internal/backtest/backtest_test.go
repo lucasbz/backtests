@@ -383,6 +383,56 @@ func TestTraverse_TieBreak_StopLossWinsOverStrategyExit(t *testing.T) {
 	assertOrder(t, "SellOrder", ops[0].SellOrder, "2010-01-05", 950, 10, domain.Sell)
 }
 
+// TestTraverse_AccumulatesStrandedCashAcrossTrades locks in the fix for
+// finding #5 (docs/plans/code-review-findings.md): integer-division
+// quantity sizing leaves a fractional remainder of cash unspent on a buy
+// ("dust"); traverse now carries that remainder forward - added to each
+// later sale's proceeds - instead of discarding it when a position closes.
+//
+//   - cycle 1: buy @300 with 1000 available -> qty = 1000/300 = 3, spends
+//     900, leaves 100 stranded ("dust").
+//   - cycle 1 sell @400 x3 -> proceeds 1200. Available for the next buy is
+//     the stranded 100 *plus* the 1200 proceeds = 1300, not just 1200.
+//   - cycle 2: buy @100 with 1300 available -> qty = 1300/100 = 13. Before
+//     this fix, traverse discarded the 100 dust on close (balance =
+//     exit.Total() = 1200 only), which would have sized this buy at
+//     1200/100 = 12 shares instead - one fewer than the true available
+//     cash affords.
+func TestTraverse_AccumulatesStrandedCashAcrossTrades(t *testing.T) {
+	candles := []domain.Candle{
+		newCandle("2010-01-04", 300, 350), // cycle 1 buy candle
+		newCandle("2010-01-05", 380, 400), // cycle 1 sell candle
+		newCandle("2010-01-06", 100, 150), // cycle 2 buy candle
+		newCandle("2010-01-07", 140, 160), // cycle 2 sell candle
+	}
+
+	strategy := &stubStrategy{
+		decide: func(candle domain.Candle, position *domain.Position, isLast bool) *domain.Order {
+			if position == nil {
+				return &domain.Order{Date: candle.Date, Price: candle.Low, OrderType: domain.Buy}
+			}
+			return &domain.Order{Date: candle.Date, Price: candle.High, OrderType: domain.Sell}
+		},
+	}
+
+	ops, err := traverse(strategy, nil, newMoney(1000), candles)
+	if err != nil {
+		t.Fatalf("traverse: %v", err)
+	}
+	if len(ops) != 2 {
+		t.Fatalf("got %d operations, want 2: %+v", len(ops), ops)
+	}
+
+	assertOrder(t, "cycle 1 BuyOrder", ops[0].BuyOrder, "2010-01-04", 300, 3, domain.Buy)
+	assertOrder(t, "cycle 1 SellOrder", ops[0].SellOrder, "2010-01-05", 400, 3, domain.Sell)
+
+	// The key assertion: qty 13, not 12 - only possible by carrying the
+	// cycle 1 buy's 100 dust forward into cycle 2's sizing pool alongside
+	// the 1200 sale proceeds (1300 / 100 = 13).
+	assertOrder(t, "cycle 2 BuyOrder", ops[1].BuyOrder, "2010-01-06", 100, 13, domain.Buy)
+	assertOrder(t, "cycle 2 SellOrder", ops[1].SellOrder, "2010-01-07", 160, 13, domain.Sell)
+}
+
 func TestPickExit(t *testing.T) {
 	strategyExit := &domain.Order{Price: newMoney(100)}
 	stopExit := &domain.Order{Price: newMoney(90)}

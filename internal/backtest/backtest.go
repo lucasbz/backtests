@@ -83,8 +83,8 @@ func (r Result) MarshalJSON() ([]byte, error) {
 
 // Run loads b.Asset's candles within [b.Start, b.End], in date order, then
 // drives them one at a time through traverse (which owns the candle loop,
-// the running balance, and the open Position - see traverse), and compiles
-// the resulting operations into a Result.
+// the running available cash, and the open Position - see traverse), and
+// compiles the resulting operations into a Result.
 func (b *Backtest) Run() (*Result, error) {
 	candles, err := cotahist.LoadCandles(b.Asset, b.Start, b.End)
 	if err != nil {
@@ -100,19 +100,26 @@ func (b *Backtest) Run() (*Result, error) {
 }
 
 // traverse feeds candles to strategy one at a time, in order, tracking the
-// running balance and any currently open domain.Position:
+// running available cash and any currently open domain.Position:
 //
 //   - While flat, it asks strategy to Decide whether to buy. If it does,
-//     the buy's quantity is sized from the running balance and the
-//     proposed entry price (balance / price); if that comes out to zero or
-//     less (balance can't afford even one share), the buy is skipped and it
-//     stays flat.
+//     the buy's quantity is sized from the running available cash and the
+//     proposed entry price (available / price); if that comes out to zero
+//     or less (available cash can't afford even one share), the buy is
+//     skipped and it stays flat. Quantity sizing is integer division, so a
+//     buy almost always leaves a fractional remainder of available
+//     unspent ("dust"); that remainder stays in available rather than
+//     being discarded, so it compounds into later buys instead of being
+//     silently lost each cycle.
 //   - While holding, it asks strategy to Decide whether to exit, and, if
 //     stopLoss is set, also asks stopLoss to Check the same candle - an OCO
 //     race between the strategy's own signal and the risk control. Whoever
 //     fires wins (see pickExit); the position closes into a completed
-//     domain.Operation, and its proceeds become the new running balance for
-//     the next buy.
+//     domain.Operation, and its full sale proceeds are added to whatever
+//     was already sitting in available (not used to replace it), so the
+//     next buy is sized off true total cash on hand - starting balance,
+//     plus every prior cycle's stranded dust, plus this sale's proceeds -
+//     not just this round's proceeds in isolation.
 //
 // Any Position still open when candles run out is intentionally dropped -
 // it's up to strategy's own Decide to force-close before the last candle
@@ -121,7 +128,7 @@ func (b *Backtest) Run() (*Result, error) {
 func traverse(strategy domain.Strategy, stopLoss domain.StopLoss, startingBalance money.Money, candles []domain.Candle) ([]domain.Operation, error) {
 	var position *domain.Position
 	var operations []domain.Operation
-	balance := startingBalance
+	available := startingBalance
 
 	for i, candle := range candles {
 		isLast := i == len(candles)-1
@@ -131,10 +138,18 @@ func traverse(strategy domain.Strategy, stopLoss domain.StopLoss, startingBalanc
 			if order == nil {
 				continue
 			}
-			order.Quantity = balance.Amount() / order.Price.Amount()
+			order.Quantity = available.Amount() / order.Price.Amount()
 			if order.Quantity <= 0 {
 				continue // can't afford even one share at this price yet
 			}
+
+			spent := order.Total()
+			leftover, err := available.Subtract(&spent)
+			if err != nil {
+				return nil, fmt.Errorf("computing leftover cash after buy on %s: %w", order.Date, err)
+			}
+			available = *leftover
+
 			position = &domain.Position{Buy: *order}
 			continue
 		}
@@ -151,7 +166,14 @@ func traverse(strategy domain.Strategy, stopLoss domain.StopLoss, startingBalanc
 		}
 		exit.Quantity = position.Buy.Quantity
 		operations = append(operations, position.Close(*exit))
-		balance = exit.Total()
+
+		proceeds := exit.Total()
+		newAvailable, err := available.Add(&proceeds)
+		if err != nil {
+			return nil, fmt.Errorf("accumulating sale proceeds on %s: %w", exit.Date, err)
+		}
+		available = *newAvailable
+
 		position = nil
 	}
 

@@ -47,9 +47,14 @@ paths:
         - name: asset
           in: query
           required: true
-          description: Ticker of the asset to look up, e.g. `PETR4`.
+          description: >
+            Ticker of the asset to look up, e.g. `PETR4`. Must match
+            `^[A-Z0-9]+$` (uppercase letters and digits only) - this is
+            enforced server-side to keep the value safe to use in a
+            filesystem path lookup.
           schema:
             type: string
+            pattern: "^[A-Z0-9]+$"
       responses:
         "200":
           description: The asset's imported date range.
@@ -62,13 +67,20 @@ paths:
                 earliest: "2010-01-04"
                 latest: "2026-07-30"
         "400":
-          description: Missing/empty `asset` query param.
+          description: >
+            Missing/empty `asset` query param, or `asset` doesn't match
+            `^[A-Z0-9]+$`.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-              example:
-                error: asset is required
+              examples:
+                missing:
+                  value:
+                    error: asset is required
+                invalidFormat:
+                  value:
+                    error: 'asset must match ^[A-Z0-9]+$ (uppercase letters and digits only), got "../../etc"'
         "404":
           description: The asset has no imported data.
           content:
@@ -243,11 +255,12 @@ paths:
         "400":
           description: >
             Invalid input. Possible messages include (not exhaustive):
-            missing required field(s), malformed JSON body, unparseable
-            `balance`, non-positive `balance`, unknown `strategy`,
-            unparseable `start`/`end`, a `stopLoss` present without a
-            `type`, an unknown `stopLoss.type`, or a `stopLoss.value`
-            invalid for that type (e.g. zero/negative).
+            missing required field(s), an `asset` that doesn't match
+            `^[A-Z0-9]+$`, malformed JSON body, unparseable `balance`,
+            non-positive `balance`, unknown `strategy`, unparseable
+            `start`/`end`, a `stopLoss` present without a `type`, an unknown
+            `stopLoss.type`, or a `stopLoss.value` invalid for that type
+            (e.g. zero/negative).
 
 
             Note: an unknown/not-yet-imported `asset` on
@@ -265,6 +278,9 @@ paths:
                 missingFields:
                   value:
                     error: "asset, start, end, strategy and balance are all required"
+                invalidAsset:
+                  value:
+                    error: 'asset must match ^[A-Z0-9]+$ (uppercase letters and digits only), got "../../etc"'
                 invalidJSON:
                   value:
                     error: "invalid JSON body: ..."
@@ -355,7 +371,12 @@ components:
       properties:
         asset:
           type: string
-          description: Ticker of the asset to backtest, e.g. `PETR4`. Must already be imported.
+          pattern: "^[A-Z0-9]+$"
+          description: >
+            Ticker of the asset to backtest, e.g. `PETR4`. Must already be
+            imported, and must match `^[A-Z0-9]+$` (uppercase letters and
+            digits only) - enforced server-side to keep the value safe to
+            use in a filesystem path lookup.
           example: PETR4
         start:
           type: string
@@ -412,7 +433,9 @@ components:
           description: >
             Meaning depends on `type`:
               - `percent`: a percentage below the entry price, e.g. `5` for
-                5%. Must be > 0.
+                5%. Must be > 0 and < 100 (>= 100 would produce a
+                zero/negative trigger price that could never fire, since a
+                candle's low can never be negative).
               - `fixed-amount`: a currency amount below the entry price, in
                 BRL major units, e.g. `2.5` for R$2.50. Must be > 0.
               - `none`: unused - there's no trigger to configure. Must be

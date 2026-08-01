@@ -1,5 +1,6 @@
 import type { BacktestResult } from '../api/client';
 import { formatCurrency, formatPercentage } from '../utils/format';
+import { cardClasses } from '../styles/ui';
 
 export interface BacktestResultCardProps {
   result: BacktestResult;
@@ -14,16 +15,18 @@ export interface BacktestResultCardProps {
 }
 
 export function BacktestResultCard({ result, label, variant }: BacktestResultCardProps) {
-  const cardClasses =
-    'rounded-2xl border bg-surface p-5 shadow-lg shadow-black/20 transition-shadow duration-150 hover:shadow-xl hover:shadow-black/25 ' +
-    (variant === 'baseline'
+  // Shared card look (`cardClasses`) plus a border color/style that varies
+  // per variant, so baseline/challenger cards are visually distinguishable
+  // when shown side by side.
+  const borderClasses =
+    variant === 'baseline'
       ? 'border-dashed border-border'
       : variant === 'challenger'
         ? 'border-accent/30'
-        : 'border-border');
+        : 'border-border';
 
   return (
-    <div className={cardClasses}>
+    <div className={`${cardClasses} ${borderClasses}`}>
       {label && (
         <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-text/70">
           {label}
@@ -57,6 +60,12 @@ export function BacktestResultCard({ result, label, variant }: BacktestResultCar
         <div className="flex items-center justify-between gap-3">
           <span className="text-text">Win rate</span>
           <span className="text-text-strong">{formatPercentage(result.winRate)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-text">Max drawdown</span>
+          <span className="text-text-strong">
+            {formatPercentage(result.maxDrawdownPercentage)}
+          </span>
         </div>
       </div>
 

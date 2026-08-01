@@ -28,8 +28,13 @@ import (
 //     alternative to omitting the stop-loss configuration entirely.
 var availableStopLosses = map[string]func(value float64) (domain.StopLoss, error){
 	"percent": func(value float64) (domain.StopLoss, error) {
-		if value <= 0 {
-			return nil, fmt.Errorf("percent stop-loss value must be greater than zero, got %v", value)
+		// value must be strictly between 0 and 100: at or above 100,
+		// PercentStopLoss.triggerPrice produces a zero/negative trigger
+		// price, and since a candle's Low can never be negative, Check's
+		// guard is always true - the stop-loss would silently never fire,
+		// becoming a permanent no-op instead of a rejected invalid config.
+		if value <= 0 || value >= 100 {
+			return nil, fmt.Errorf("percent stop-loss value must be greater than zero and less than 100, got %v", value)
 		}
 		return &PercentStopLoss{Percent: value}, nil
 	},

@@ -4,7 +4,9 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -16,6 +18,26 @@ import (
 	"github.com/lucasbz/backtests/internal/stoploss"
 	"github.com/lucasbz/backtests/internal/strategies"
 )
+
+// assetPattern is the strict allowlist enforced on every request's
+// asset/ticker string before it reaches internal/cotahist: uppercase
+// letters and digits only, matching B3's own ticker format (e.g. "PETR4").
+// internal/cotahist.LoadCandlesFrom/DateRangeFrom build filesystem paths by
+// joining this string directly (filepath.Join(dir, asset, ...)) with no
+// sanitization of their own, so without this check here, at the API
+// boundary, a caller could pass an asset containing "/" or ".." segments
+// and traverse outside resources/cotahist (see docs/plans/
+// code-review-findings.md, finding #1).
+var assetPattern = regexp.MustCompile(`^[A-Z0-9]+$`)
+
+// validateAsset rejects any asset/ticker value that doesn't match
+// assetPattern, before it's used to build a filesystem path.
+func validateAsset(asset string) error {
+	if !assetPattern.MatchString(asset) {
+		return fmt.Errorf("asset must match %s (uppercase letters and digits only), got %q", assetPattern.String(), asset)
+	}
+	return nil
+}
 
 // NewHandler builds the HTTP handler for the API: GET /api/info,
 // POST /api/backtest, GET /api/strategies, GET /api/stop-losses,
@@ -56,6 +78,10 @@ func handleInfo(c *gin.Context) {
 	asset := c.Query("asset")
 	if asset == "" {
 		writeError(c, http.StatusBadRequest, "asset is required")
+		return
+	}
+	if err := validateAsset(asset); err != nil {
+		writeError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -160,6 +186,10 @@ func handleBacktest(c *gin.Context) {
 
 	if req.Asset == "" || req.Start == "" || req.End == "" || req.Strategy == "" || req.Balance == "" {
 		writeError(c, http.StatusBadRequest, "asset, start, end, strategy and balance are all required")
+		return
+	}
+	if err := validateAsset(req.Asset); err != nil {
+		writeError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 

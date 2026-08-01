@@ -34,13 +34,13 @@ years incrementally.
 Before backtesting, check what date range is actually imported for a ticker:
 
 ```sh
-make info TICKER=PETR4
+make info ASSET=PETR4
 ```
 
 which runs:
 
 ```sh
-go run ./cmd info -ticker PETR4
+go run ./cmd info -asset PETR4
 ```
 
 ```
@@ -50,23 +50,23 @@ PETR4: data available from 2010-01-04 to 2026-07-30
 ## 3. Run a backtest
 
 ```sh
-make backtest TICKER=PETR4 START=2015-01-02 END=2015-12-30 STRATEGY=buy-and-hold BALANCE=10000.00
+make backtest ASSET=PETR4 START=2015-01-02 END=2015-12-30 STRATEGY=buy-and-hold BALANCE=10000.00
 ```
 
 which runs:
 
 ```sh
-go run ./cmd backtest -ticker PETR4 -start 2015-01-02 -end 2015-12-30 -strategy buy-and-hold -balance 10000.00
+go run ./cmd backtest -asset PETR4 -start 2015-01-02 -end 2015-12-30 -strategy buy-and-hold -balance 10000.00
 ```
 
-All of `TICKER`, `START`, `END`, `STRATEGY` and `BALANCE` have defaults in
+All of `ASSET`, `START`, `END`, `STRATEGY` and `BALANCE` have defaults in
 the `Makefile`, so `make backtest` alone will run with those.
 
 Flags:
 
 | Flag | Description |
 |---|---|
-| `-ticker` | Ticker to backtest, e.g. `PETR4`. Must already be imported (step 1). |
+| `-asset` | Ticker of the asset to backtest, e.g. `PETR4`. Must already be imported (step 1). |
 | `-start` / `-end` | Inclusive date range, `YYYY-MM-DD`. Only trading days have data — B3 holidays and weekends have no quotes. |
 | `-strategy` | Which strategy to run. Currently only `buy-and-hold` (see below). |
 | `-balance` | Starting cash balance, e.g. `10000.00`. Position sizing spends as much of this as affords whole shares at the buy price. |

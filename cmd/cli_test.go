@@ -61,7 +61,7 @@ func captureStdout(t *testing.T, fn func()) string {
 func TestRun_Backtest_Valid(t *testing.T) {
 	err := run([]string{
 		"backtest",
-		"-ticker", "PETR4",
+		"-asset", "PETR4",
 		"-start", "2010-01-01",
 		"-end", "2010-12-31",
 		"-strategy", "buy-and-hold",
@@ -75,7 +75,7 @@ func TestRun_Backtest_Valid(t *testing.T) {
 func TestRun_Backtest_UnknownStrategy(t *testing.T) {
 	err := run([]string{
 		"backtest",
-		"-ticker", "PETR4",
+		"-asset", "PETR4",
 		"-start", "2010-01-01",
 		"-end", "2010-12-31",
 		"-strategy", "does-not-exist",
@@ -87,7 +87,7 @@ func TestRun_Backtest_UnknownStrategy(t *testing.T) {
 }
 
 func TestRun_Backtest_MissingArgs(t *testing.T) {
-	err := run([]string{"backtest", "-ticker", "PETR4"})
+	err := run([]string{"backtest", "-asset", "PETR4"})
 	if err == nil {
 		t.Fatal("expected error for missing required flags")
 	}
@@ -96,7 +96,7 @@ func TestRun_Backtest_MissingArgs(t *testing.T) {
 func TestRun_Backtest_MissingBalance(t *testing.T) {
 	err := run([]string{
 		"backtest",
-		"-ticker", "PETR4",
+		"-asset", "PETR4",
 		"-start", "2010-01-01",
 		"-end", "2010-12-31",
 		"-strategy", "buy-and-hold",
@@ -109,7 +109,7 @@ func TestRun_Backtest_MissingBalance(t *testing.T) {
 func TestRun_Backtest_InvalidBalance(t *testing.T) {
 	err := run([]string{
 		"backtest",
-		"-ticker", "PETR4",
+		"-asset", "PETR4",
 		"-start", "2010-01-01",
 		"-end", "2010-12-31",
 		"-strategy", "buy-and-hold",
@@ -123,7 +123,7 @@ func TestRun_Backtest_InvalidBalance(t *testing.T) {
 func TestRun_Backtest_ZeroBalance(t *testing.T) {
 	err := run([]string{
 		"backtest",
-		"-ticker", "PETR4",
+		"-asset", "PETR4",
 		"-start", "2010-01-01",
 		"-end", "2010-12-31",
 		"-strategy", "buy-and-hold",
@@ -137,7 +137,7 @@ func TestRun_Backtest_ZeroBalance(t *testing.T) {
 func TestRun_Backtest_InvalidDate(t *testing.T) {
 	err := run([]string{
 		"backtest",
-		"-ticker", "PETR4",
+		"-asset", "PETR4",
 		"-start", "not-a-date",
 		"-end", "2010-12-31",
 		"-strategy", "buy-and-hold",
@@ -151,7 +151,7 @@ func TestRun_Backtest_InvalidDate(t *testing.T) {
 func TestRun_Backtest_InvalidEndDate(t *testing.T) {
 	err := run([]string{
 		"backtest",
-		"-ticker", "PETR4",
+		"-asset", "PETR4",
 		"-start", "2010-01-01",
 		"-end", "not-a-date",
 		"-strategy", "buy-and-hold",
@@ -186,7 +186,7 @@ func TestRun_Backtest_LoadCandlesError(t *testing.T) {
 
 	err := run([]string{
 		"backtest",
-		"-ticker", "BADTICKER",
+		"-asset", "BADTICKER",
 		"-start", "2010-01-01",
 		"-end", "2010-12-31",
 		"-strategy", "buy-and-hold",
@@ -203,7 +203,7 @@ func TestRun_Backtest_Verbose(t *testing.T) {
 	output := captureStdout(t, func() {
 		err := run([]string{
 			"backtest",
-			"-ticker", "PETR4",
+			"-asset", "PETR4",
 			"-start", "2015-01-02",
 			"-end", "2015-12-30",
 			"-strategy", "buy-and-hold",
@@ -271,17 +271,17 @@ func TestPrintResult_Verbose(t *testing.T) {
 	}
 }
 
-func TestRun_Info_MissingTicker(t *testing.T) {
+func TestRun_Info_MissingAsset(t *testing.T) {
 	err := run([]string{"info"})
 	if err == nil {
-		t.Fatal("expected error for missing ticker")
+		t.Fatal("expected error for missing asset")
 	}
 }
 
-func TestRun_Info_UnknownTicker(t *testing.T) {
-	err := run([]string{"info", "-ticker", "DOESNOTEXIST9"})
+func TestRun_Info_UnknownAsset(t *testing.T) {
+	err := run([]string{"info", "-asset", "DOESNOTEXIST9"})
 	if err == nil {
-		t.Fatal("expected error for unknown ticker")
+		t.Fatal("expected error for unknown asset")
 	}
 }
 
@@ -296,7 +296,7 @@ func TestRun_Info_Valid(t *testing.T) {
 	chdirToRepoRoot(t)
 
 	output := captureStdout(t, func() {
-		err := run([]string{"info", "-ticker", "PETR4"})
+		err := run([]string{"info", "-asset", "PETR4"})
 		if err != nil {
 			t.Fatalf("run: %v", err)
 		}

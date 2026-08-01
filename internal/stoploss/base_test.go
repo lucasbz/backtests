@@ -68,6 +68,37 @@ func TestLoadStopLoss_NonPositiveValue(t *testing.T) {
 	}
 }
 
+// TestLoadStopLoss_PercentAtOrAboveHundredRejected checks the "percent"
+// type's upper bound: value >= 100 must be rejected, since it would
+// otherwise produce a zero/negative trigger price that a candle's low (which
+// can never be negative) can never touch - a silent, permanent no-op stop-
+// loss instead of a rejected invalid config (see
+// docs/plans/code-review-findings.md, finding #4).
+func TestLoadStopLoss_PercentAtOrAboveHundredRejected(t *testing.T) {
+	for _, value := range []float64{100, 100.5, 250} {
+		if _, err := LoadStopLoss("percent", value); err == nil {
+			t.Errorf("LoadStopLoss(%q, %v) = nil error, want an error (>= 100)", "percent", value)
+		}
+	}
+}
+
+// TestLoadStopLoss_PercentJustBelowHundredAccepted is the boundary check
+// alongside TestLoadStopLoss_PercentAtOrAboveHundredRejected: values inside
+// (0, 100) must still be accepted.
+func TestLoadStopLoss_PercentJustBelowHundredAccepted(t *testing.T) {
+	sl, err := LoadStopLoss("percent", 99.99)
+	if err != nil {
+		t.Fatalf("LoadStopLoss(%q, 99.99): %v", "percent", err)
+	}
+	pct, ok := sl.(*PercentStopLoss)
+	if !ok {
+		t.Fatalf("LoadStopLoss(%q, 99.99) = %T, want *PercentStopLoss", "percent", sl)
+	}
+	if pct.Percent != 99.99 {
+		t.Errorf("Percent = %v, want 99.99", pct.Percent)
+	}
+}
+
 func TestLoadStopLoss_None(t *testing.T) {
 	sl, err := LoadStopLoss("none", 0)
 	if err != nil {

@@ -91,3 +91,15 @@ func TestParseMoney_Invalid(t *testing.T) {
 		t.Fatal("expected error for invalid input")
 	}
 }
+
+// TestParseMoney_NonFinite checks that Inf/-Inf/NaN - all of which
+// strconv.ParseFloat parses without error - are explicitly rejected by
+// ParseMoney instead of silently saturating to math.MaxInt64 (Inf) or 0
+// (NaN) cents (see docs/plans/code-review-findings.md, finding #2).
+func TestParseMoney_NonFinite(t *testing.T) {
+	for _, s := range []string{"Inf", "+Inf", "-Inf", "inf", "NaN", "nan"} {
+		if _, err := ParseMoney(s); err == nil {
+			t.Errorf("ParseMoney(%q) = nil error, want an error (non-finite input)", s)
+		}
+	}
+}

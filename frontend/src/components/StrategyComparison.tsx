@@ -8,6 +8,7 @@ import {
 } from '../api/client';
 import { BacktestResultCard } from './BacktestResultCard';
 import { buttonPrimaryClasses, errorBoxClasses, fieldClasses } from '../styles/ui';
+import { canSubmitBacktest } from '../utils/backtestForm';
 
 // Buy & Hold is always run as the fixed baseline for comparison, so it's
 // never offered as a pickable option below - see `filter` on `strategies`.
@@ -178,19 +179,17 @@ export function StrategyComparison({
   }
 
   // "none" (the default) or a blank value both mean no stop-loss - valid,
-  // optional. Any other type needs a positive trigger value.
-  const stopLossValid =
-    stopLossType === 'none' ||
-    stopLossValue === '' ||
-    (stopLossType !== '' && Number(stopLossValue) > 0);
-
-  const canSubmit =
-    start !== '' &&
-    end !== '' &&
-    strategy !== '' &&
-    balance.trim() !== '' &&
-    stopLossValid &&
-    !loading;
+  // optional. Any other type needs a positive trigger value. See
+  // `utils/backtestForm.ts` for the (unit-tested) logic.
+  const canSubmit = canSubmitBacktest({
+    start,
+    end,
+    strategy,
+    balance,
+    stopLossType,
+    stopLossValue,
+    loading,
+  });
 
   return (
     <section className="text-left">
@@ -225,7 +224,7 @@ export function StrategyComparison({
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor="bt-strategy" className="text-sm text-text">
-            Strategy to compare against Buy &amp; Hold
+            Strategy
           </label>
           <select
             id="bt-strategy"

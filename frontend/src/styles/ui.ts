@@ -43,9 +43,15 @@ export function chipClasses(active: boolean): string {
   );
 }
 
-/** Rounded, softly-elevated card surface. */
+/**
+ * Rounded, softly-elevated card surface (e.g. `BacktestResultCard`'s base
+ * look). Deliberately doesn't pin a border *color* - `border` alone just
+ * sets the width/default style, so callers can append their own
+ * `border-*` color/style utility (e.g. `border-border`, `border-dashed
+ * border-border`) without fighting a color baked in here.
+ */
 export const cardClasses =
-  'rounded-2xl border border-border bg-surface p-5 shadow-lg shadow-black/20 ' +
+  'rounded-2xl border bg-surface p-5 shadow-lg shadow-black/20 ' +
   'transition-shadow duration-150 hover:shadow-xl hover:shadow-black/25';
 
 /** Inline error/alert box. */

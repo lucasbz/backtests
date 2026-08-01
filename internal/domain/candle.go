@@ -33,10 +33,22 @@ func MoneyFromFloat(f float64) money.Money {
 
 // ParseMoney parses a plain decimal string (e.g. "10000.00", from a CLI
 // flag) into a money.Money in Currency.
+//
+// strconv.ParseFloat happily accepts "Inf"/"+Inf"/"-Inf"/"NaN" (and their
+// case-insensitive variants) as valid float64 values with no error; feeding
+// one of those into moneyFromFloat's math.Round(f*100) then int64(...)
+// conversion silently saturates to math.MaxInt64 (or NaN converts to 0)
+// instead of erroring, which would let a caller like handleBacktest's
+// "balance must be positive" check pass trivially on a bogus,
+// astronomically large "balance". Reject non-finite input explicitly
+// instead.
 func ParseMoney(s string) (money.Money, error) {
 	f, err := strconv.ParseFloat(s, 64)
 	if err != nil {
 		return money.Money{}, fmt.Errorf("parsing money %q: %w", s, err)
+	}
+	if math.IsInf(f, 0) || math.IsNaN(f) {
+		return money.Money{}, fmt.Errorf("parsing money %q: value must be a finite number", s)
 	}
 	return moneyFromFloat(f), nil
 }

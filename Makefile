@@ -1,6 +1,6 @@
 IMPORT_YEAR ?= 2011
 
-TICKER ?= PETR4
+ASSET ?= PETR4
 
 START ?= 2015-01-02
 END ?= 2015-01-02
@@ -16,10 +16,10 @@ import:
 		-out resources/cotahist
 
 backtest:
-	go run ./cmd backtest -ticker $(TICKER) -start $(START) -end $(END) -strategy $(STRATEGY) -balance $(BALANCE)
+	go run ./cmd backtest -asset $(ASSET) -start $(START) -end $(END) -strategy $(STRATEGY) -balance $(BALANCE)
 
 info:
-	go run ./cmd info -ticker $(TICKER)
+	go run ./cmd info -asset $(ASSET)
 
 serve:
 	go run ./cmd serve -addr $(ADDR)

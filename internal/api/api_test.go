@@ -67,6 +67,33 @@ func TestHandleInfo_MissingAsset(t *testing.T) {
 	}
 }
 
+// TestHandleInfo_PathTraversalAssetRejected proves a path-traversal-shaped
+// asset value is rejected with a 400 by validateAsset, before it ever
+// reaches cotahist.DateRange to be joined into a filesystem path (see
+// docs/plans/code-review-findings.md, finding #1).
+func TestHandleInfo_PathTraversalAssetRejected(t *testing.T) {
+	chdirToRepoRoot(t)
+	for _, asset := range []string{
+		"../../etc/passwd",
+		"..%2F..%2Fetc",
+		"PETR4/../../etc",
+		"foo/bar",
+		"petr4", // lowercase also rejected - allowlist is strict uppercase+digits
+	} {
+		rec := doRequest(t, http.MethodGet, "/api/info?asset="+asset, nil)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("asset=%q: status = %d, want %d, body = %s", asset, rec.Code, http.StatusBadRequest, rec.Body.String())
+			continue
+		}
+
+		var resp errorResponse
+		decodeJSON(t, rec, &resp)
+		if resp.Error == "" {
+			t.Errorf("asset=%q: expected a non-empty error message", asset)
+		}
+	}
+}
+
 func TestHandleInfo_UnknownAsset(t *testing.T) {
 	rec := doRequest(t, http.MethodGet, "/api/info?asset=DOESNOTEXIST9", nil)
 	if rec.Code != http.StatusNotFound {
@@ -206,6 +233,27 @@ func TestHandleBacktest_ZeroBalance(t *testing.T) {
 	rec := doRequest(t, http.MethodPost, "/api/backtest", body)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+// TestHandleBacktest_PathTraversalAssetRejected mirrors
+// TestHandleInfo_PathTraversalAssetRejected for POST /api/backtest: a
+// path-traversal-shaped asset must be rejected with a 400 before it reaches
+// cotahist.LoadCandles.
+func TestHandleBacktest_PathTraversalAssetRejected(t *testing.T) {
+	for _, asset := range []string{"../../etc/passwd", "PETR4/../../etc", "foo/bar"} {
+		body := []byte(`{"asset":"` + asset + `","start":"2015-01-02","end":"2015-12-30","strategy":"buy-and-hold","balance":"10000.00"}`)
+		rec := doRequest(t, http.MethodPost, "/api/backtest", body)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("asset=%q: status = %d, want %d, body = %s", asset, rec.Code, http.StatusBadRequest, rec.Body.String())
+			continue
+		}
+
+		var resp errorResponse
+		decodeJSON(t, rec, &resp)
+		if resp.Error == "" {
+			t.Errorf("asset=%q: expected a non-empty error message", asset)
+		}
 	}
 }
 
