@@ -1,6 +1,5 @@
 import type { BacktestResult } from '../api/client';
 import { formatCurrency, formatPercentage } from '../utils/format';
-import './BacktestResultCard.css';
 
 export interface BacktestResultCardProps {
   result: BacktestResult;
@@ -15,73 +14,83 @@ export interface BacktestResultCardProps {
 }
 
 export function BacktestResultCard({ result, label, variant }: BacktestResultCardProps) {
-  return (
-    <div
-      className={
-        variant
-          ? `backtest-result-card backtest-result-card--${variant}`
-          : 'backtest-result-card'
-      }
-    >
-      {label && <span className="backtest-result-card__label">{label}</span>}
-      <h3>{result.strategyName}</h3>
+  const cardClasses =
+    'rounded-2xl border bg-surface p-5 shadow-lg shadow-black/20 transition-shadow duration-150 hover:shadow-xl hover:shadow-black/25 ' +
+    (variant === 'baseline'
+      ? 'border-dashed border-border'
+      : variant === 'challenger'
+        ? 'border-accent/30'
+        : 'border-border');
 
-      <div className="backtest-result-card__summary">
-        <div className="backtest-result-card__stat">
-          <span className="backtest-result-card__field-label">Balance</span>
-          <span>{formatCurrency(result.startingBalance)} &rarr; {formatCurrency(result.endingBalance)}</span>
+  return (
+    <div className={cardClasses}>
+      {label && (
+        <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-text/70">
+          {label}
+        </span>
+      )}
+      <h3 className="mb-4 text-lg font-semibold text-text-strong">{result.strategyName}</h3>
+
+      <div className="grid gap-y-2 gap-x-10">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-text">Balance</span>
+          <span className="text-text-strong">
+            {formatCurrency(result.startingBalance)} &rarr; {formatCurrency(result.endingBalance)}
+          </span>
         </div>
-        <div className="backtest-result-card__stat">
-          <span className="backtest-result-card__field-label">Profit</span>
-          <span
-            className={
-              result.profit >= 0 ? 'backtest-result-card__gain' : 'backtest-result-card__loss'
-            }
-          >
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-text">Profit</span>
+          <span className={result.profit >= 0 ? 'font-medium text-gain' : 'font-medium text-loss'}>
             {formatCurrency(result.profit)} ({formatPercentage(result.profitPercentage)})
           </span>
         </div>
-        <div className="backtest-result-card__stat">
-          <span className="backtest-result-card__field-label">Operations</span>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-text">Operations</span>
           <span
             className={
-              result.gains >= result.losses ? 'backtest-result-card__gain' : 'backtest-result-card__loss'
+              result.gains >= result.losses ? 'font-medium text-gain' : 'font-medium text-loss'
             }
           >
             T: {result.totalOperations} G: {result.gains} / L: {result.losses}
           </span>
         </div>
-        <div className="backtest-result-card__stat">
-          <span className="backtest-result-card__field-label">Win rate</span>
-          <span>{formatPercentage(result.winRate)}</span>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-text">Win rate</span>
+          <span className="text-text-strong">{formatPercentage(result.winRate)}</span>
         </div>
       </div>
 
       {result.operations && result.operations.length > 0 && (
-        <details className="backtest-result-card__operations-details">
-          <summary>Operations ({result.operations.length})</summary>
-          <table className="backtest-result-card__operations">
-            <thead>
+        <details className="mt-4">
+          <summary className="-mx-1.5 cursor-pointer select-none rounded-lg px-1.5 py-1 font-semibold text-text-strong transition-colors duration-150 hover:bg-accent-soft">
+            Operations ({result.operations.length})
+          </summary>
+          <table className="mt-2 w-full border-collapse text-xs">
+            <thead className="bg-raised">
               <tr>
-                <th>#</th>
-                <th>Buy date</th>
-                <th>Buy price</th>
-                <th>Buy qty</th>
-                <th>Sell date</th>
-                <th>Sell price</th>
-                <th>Sell qty</th>
+                <th className="border border-border px-2 py-1 text-left">#</th>
+                <th className="border border-border px-2 py-1 text-right">Buy date</th>
+                <th className="border border-border px-2 py-1 text-right">Buy price</th>
+                <th className="border border-border px-2 py-1 text-right">Buy qty</th>
+                <th className="border border-border px-2 py-1 text-right">Sell date</th>
+                <th className="border border-border px-2 py-1 text-right">Sell price</th>
+                <th className="border border-border px-2 py-1 text-right">Sell qty</th>
               </tr>
             </thead>
             <tbody>
               {result.operations.map((op, index) => (
                 <tr key={`${op.buyOrder.date}-${op.sellOrder.date}-${index}`}>
-                  <td>{index + 1}</td>
-                  <td>{op.buyOrder.date}</td>
-                  <td>{formatCurrency(op.buyOrder.price)}</td>
-                  <td>{op.buyOrder.quantity}</td>
-                  <td>{op.sellOrder.date}</td>
-                  <td>{formatCurrency(op.sellOrder.price)}</td>
-                  <td>{op.sellOrder.quantity}</td>
+                  <td className="border border-border px-2 py-1 text-left">{index + 1}</td>
+                  <td className="border border-border px-2 py-1 text-right">{op.buyOrder.date}</td>
+                  <td className="border border-border px-2 py-1 text-right">
+                    {formatCurrency(op.buyOrder.price)}
+                  </td>
+                  <td className="border border-border px-2 py-1 text-right">{op.buyOrder.quantity}</td>
+                  <td className="border border-border px-2 py-1 text-right">{op.sellOrder.date}</td>
+                  <td className="border border-border px-2 py-1 text-right">
+                    {formatCurrency(op.sellOrder.price)}
+                  </td>
+                  <td className="border border-border px-2 py-1 text-right">{op.sellOrder.quantity}</td>
                 </tr>
               ))}
             </tbody>
@@ -90,7 +99,7 @@ export function BacktestResultCard({ result, label, variant }: BacktestResultCar
       )}
 
       {result.operations && result.operations.length === 0 && (
-        <p className="backtest-result-card__hint">No operations were recorded.</p>
+        <p className="mt-4 text-sm text-text">No operations were recorded.</p>
       )}
     </div>
   );

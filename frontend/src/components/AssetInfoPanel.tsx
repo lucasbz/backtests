@@ -1,5 +1,5 @@
 import type { AssetInfo } from '../api/client';
-import './AssetInfoPanel.css';
+import { errorBoxClasses } from '../styles/ui';
 
 export interface AssetInfoPanelProps {
   info: AssetInfo | null;
@@ -15,22 +15,25 @@ export interface AssetInfoPanelProps {
  */
 export function AssetInfoPanel({ info, loading, error }: AssetInfoPanelProps) {
   return (
-    <section className="asset-info-panel">
-      {loading && <p className="asset-info-panel__hint">Loading info…</p>}
+    <section className="text-left">
+      {loading && <p className="text-sm text-text">Loading info…</p>}
 
       {error && (
-        <div className="asset-info-panel__error" role="alert">
+        <div className={errorBoxClasses} role="alert">
           {error}
         </div>
       )}
 
       {info && (
-        <div className="asset-info-panel__result">
-          <div className="asset-info-panel__result-row">
-            <h2>{info.asset}</h2>
+        <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-lg shadow-black/20">
+          <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-3">
+            <h2 className="text-xl font-semibold text-text-strong">{info.asset}</h2>
           </div>
-          <div className="asset-info-panel__result-row">
-            <span>From <b>{info.earliest}</b> to <b>{info.latest}</b></span>
+          <div className="flex items-center justify-between gap-4 px-5 py-3">
+            <span className="text-text">
+              From <b className="font-semibold text-text-strong">{info.earliest}</b> to{' '}
+              <b className="font-semibold text-text-strong">{info.latest}</b>
+            </span>
           </div>
         </div>
       )}

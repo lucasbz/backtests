@@ -1,4 +1,4 @@
-import './YearFilter.css';
+import { chipClasses } from '../styles/ui';
 
 // The asset list only has imported data within this range; keep it in sync
 // with the actual imported dataset if that ever changes. There is no API
@@ -25,16 +25,15 @@ export interface YearFilterProps {
  */
 export function YearFilter({ value, onChange }: YearFilterProps) {
   return (
-    <div className="year-filter">
-      <span className="year-filter__label">Year</span>
-      <div className="year-filter__options" role="group" aria-label="Year">
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+      <div
+        className="flex flex-wrap items-center gap-2"
+        role="group"
+        aria-label="Year"
+      >
         <button
           type="button"
-          className={
-            value === 'all'
-              ? 'year-filter__option year-filter__option--active'
-              : 'year-filter__option'
-          }
+          className={chipClasses(value === 'all')}
           aria-pressed={value === 'all'}
           onClick={() => onChange('all')}
         >
@@ -44,11 +43,7 @@ export function YearFilter({ value, onChange }: YearFilterProps) {
           <button
             key={year}
             type="button"
-            className={
-              value === year
-                ? 'year-filter__option year-filter__option--active'
-                : 'year-filter__option'
-            }
+            className={chipClasses(value === year)}
             aria-pressed={value === year}
             onClick={() => onChange(year)}
           >

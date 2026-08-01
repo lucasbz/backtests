@@ -1,202 +1,87 @@
-:root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --surface: #fbfbfe;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --error-bg: rgba(220, 38, 38, 0.08);
-  --error-border: rgba(220, 38, 38, 0.4);
-  --error-text: #b91c1c;
-  --gain: #15803d;
-  --loss: #b91c1c;
+@import "tailwindcss";
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+/*
+ * Design tokens (resend.com-inspired: dark-first, near-black background,
+ * soft rounded cards, a single vivid purple->pink accent). Tailwind v4
+ * auto-generates utilities from every `--color-*`/`--font-*` variable
+ * declared here (e.g. `--color-surface` becomes `bg-surface`/`text-surface`
+ * /`border-surface`), so these are the single source of truth for the
+ * palette instead of ad hoc utility strings scattered across components.
+ *
+ * Dark-only by design: resend.com itself ships dark-first with no real
+ * light mode, and the accent/card treatment below is tuned specifically
+ * for a near-black background. Rather than maintain a second palette via
+ * `prefers-color-scheme: light` that would dilute that look, this app is
+ * dark-only - `color-scheme: dark` below hints browser chrome (scrollbars,
+ * form controls) accordingly regardless of the OS setting.
+ */
+@theme {
+  --font-sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, Consolas, monospace;
 
-  /* Spacing scale - keeps padding/margin/gap values consistent across
-     components instead of ad hoc pixel values. */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 24px;
-  --space-6: 32px;
-  --space-8: 48px;
+  /* Surfaces */
+  --color-bg: #08070c;
+  --color-surface: #131219;
+  --color-surface-hover: #1a1922;
+  --color-raised: #1c1b24;
 
-  /* Corner radius scale, applied consistently to cards/buttons/inputs.
-     Kept small/sharp on purpose (trading-terminal feel rather than a
-     soft consumer-SaaS card look) - no pill/fully-rounded shapes here,
-     see YearFilter.css and AssetBrowser.css for the toggle buttons that
-     used to be pill-shaped. */
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 10px;
+  /* Borders */
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-hover: rgba(255, 255, 255, 0.16);
 
-  /* Soft, low-contrast elevation for card-like surfaces. Redefined per
-     color scheme below since a flat black shadow reads very differently
-     on a light vs. dark background. */
-  --shadow-sm: 0 1px 2px rgba(23, 18, 38, 0.05), 0 1px 1px rgba(23, 18, 38, 0.04);
-  --shadow-md: 0 10px 30px rgba(23, 18, 38, 0.08), 0 2px 8px rgba(23, 18, 38, 0.05);
+  /* Text */
+  --color-text: #a2a0ae;
+  --color-muted: #6f6d7a;
+  --color-text-strong: #f5f4f8;
 
-  --ease: cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-fast: 150ms var(--ease);
-  --transition: 220ms var(--ease);
+  /* Accent - single vivid purple->pink gradient, used sparingly */
+  --color-accent: #a855f7;
+  --color-accent-hover: #c084fc;
+  --color-accent-soft: rgba(168, 85, 247, 0.14);
+  --color-accent-from: #a855f7;
+  --color-accent-to: #f472b6;
 
-  font: 16px/145% var(--sans);
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  /* Financial semantics - deliberately distinct hues from the accent
+     gradient above (emerald green / pure red) so profit vs. loss reads
+     unambiguously next to purple/pink UI chrome. */
+  --color-gain: #34d399;
+  --color-gain-soft: rgba(52, 211, 153, 0.12);
+  --color-loss: #f87171;
+  --color-loss-soft: rgba(248, 113, 113, 0.12);
+
+  /* Errors reuse the loss red family, just named separately since they're
+     a different concern (request failures, not P&L). */
+  --color-error-bg: rgba(248, 113, 113, 0.1);
+  --color-error-border: rgba(248, 113, 113, 0.35);
+  --color-error-text: #fca5a5;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --surface: #1c1d26;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --error-bg: rgba(248, 113, 113, 0.12);
-    --error-border: rgba(248, 113, 113, 0.4);
-    --error-text: #f87171;
-    --gain: #4ade80;
-    --loss: #f87171;
-
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 1px rgba(0, 0, 0, 0.24);
-    --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.25);
+@layer base {
+  * {
+    box-sizing: border-box;
   }
-}
 
-* {
-  box-sizing: border-box;
-}
+  :root {
+    color-scheme: dark;
+  }
 
-body {
-  margin: 0;
-  min-height: 100svh;
-}
+  body {
+    margin: 0;
+    min-height: 100svh;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    @apply bg-bg font-sans text-base leading-relaxed text-text;
+  }
 
-#root {
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-}
+  #root {
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+  }
 
-::selection {
-  background: var(--accent-bg);
-  color: var(--text-h);
-}
-
-h1,
-h2,
-h3 {
-  font-family: var(--heading);
-  font-weight: 600;
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: 32px;
-  letter-spacing: -0.01em;
-  margin: 0;
-}
-
-h2 {
-  font-size: 22px;
-  letter-spacing: -0.005em;
-  margin: 0 0 4px;
-}
-
-h3 {
-  font-size: 18px;
-  margin: 0 0 12px;
-}
-
-p {
-  margin: 0;
-}
-
-code {
-  font-family: var(--mono);
-  border-radius: var(--radius-sm);
-  font-size: 15px;
-  padding: 2px 6px;
-  background: var(--code-bg);
-  color: var(--text-h);
-}
-
-input,
-select,
-button {
-  font: inherit;
-  color: var(--text-h);
-  transition:
-    border-color var(--transition-fast),
-    box-shadow var(--transition-fast),
-    background-color var(--transition-fast),
-    color var(--transition-fast),
-    transform var(--transition-fast);
-}
-
-input,
-select {
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--bg);
-}
-
-input:hover:not(:disabled),
-select:hover:not(:disabled) {
-  border-color: var(--accent-border);
-}
-
-input:disabled,
-select:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-input:focus-visible,
-select:focus-visible,
-button:focus-visible {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-bg);
-}
-
-button {
-  padding: 8px 16px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--accent-border);
-  background: var(--accent-bg);
-  color: var(--text-h);
-  cursor: pointer;
-}
-
-button:hover:not(:disabled) {
-  border-color: var(--accent);
-  box-shadow: var(--shadow-sm);
-}
-
-button:active:not(:disabled) {
-  transform: translateY(1px);
-  box-shadow: none;
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
+  ::selection {
+    @apply bg-accent-soft text-text-strong;
+  }
 }

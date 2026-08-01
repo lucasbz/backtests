@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { YearFilterValue } from './YearFilter';
-import './AssetList.css';
+import { errorBoxClasses, fieldClasses } from '../styles/ui';
 
 export interface AssetListProps {
   /** Heading for this column, e.g. "Stocks" or "Others". */
@@ -16,12 +16,12 @@ export interface AssetListProps {
 }
 
 /**
- * One column of the asset browser: a heading, its own search box, and the
- * (locally filtered) list of assets for a single group ("Stocks" or
- * "Others"). Two independent instances of this component are rendered by
- * `AssetBrowser`, each with its own search state, but both are handed
- * their slice of data from a single shared fetch (see `useAssetList`) so
- * the asset list itself is only ever requested once.
+ * One group's worth of the asset browser: a heading, its own search box,
+ * and the (locally filtered) list of assets for a single group ("Stocks"
+ * or "Others"). Two independent instances of this component are rendered
+ * as tabs by `AssetListPanel`, each with its own search state, but both
+ * are handed their slice of data from a single shared fetch (see
+ * `useAssetList`) so the asset list itself is only ever requested once.
  */
 export function AssetList({ label, year, items, selected, onSelect, loading, error }: AssetListProps) {
   const [query, setQuery] = useState('');
@@ -33,19 +33,19 @@ export function AssetList({ label, year, items, selected, onSelect, loading, err
     : items;
 
   return (
-    <aside className="asset-list">
-      <h2>{label}</h2>
+    <aside className="w-[260px] flex-shrink-0 text-left">
+      <h2 className="mb-3 text-xl font-semibold text-text-strong">{label}</h2>
 
-      {loading && <p className="asset-list__hint">Loading assets…</p>}
+      {loading && <p className="text-sm text-text">Loading assets…</p>}
 
       {error && (
-        <div className="asset-list__error" role="alert">
+        <div className={errorBoxClasses} role="alert">
           {error}
         </div>
       )}
 
       {!loading && !error && !hasAssets && (
-        <p className="asset-list__hint">
+        <p className="text-sm text-text">
           {year === 'all' ? 'No assets available.' : `No assets have data for ${year}.`}
         </p>
       )}
@@ -53,7 +53,7 @@ export function AssetList({ label, year, items, selected, onSelect, loading, err
       {!loading && !error && hasAssets && (
         <input
           type="search"
-          className="asset-list__search"
+          className={`${fieldClasses} mb-3`}
           placeholder={`Search ${label.toLowerCase()}…`}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -62,19 +62,19 @@ export function AssetList({ label, year, items, selected, onSelect, loading, err
       )}
 
       {!loading && !error && hasAssets && filteredItems.length === 0 && (
-        <p className="asset-list__hint">No assets match &quot;{query.trim()}&quot;.</p>
+        <p className="text-sm text-text">No assets match &quot;{query.trim()}&quot;.</p>
       )}
 
       {!loading && !error && filteredItems.length > 0 && (
-        <ul className="asset-list__items">
+        <ul className="m-0 flex max-h-[75vh] list-none flex-col gap-1 overflow-y-auto p-0">
           {filteredItems.map((asset) => (
             <li key={asset}>
               <button
                 type="button"
                 className={
                   asset === selected
-                    ? 'asset-list__item asset-list__item--active'
-                    : 'asset-list__item'
+                    ? 'w-full rounded-xl border border-accent/50 bg-accent-soft px-3 py-2 text-left text-sm text-text-strong transition-all duration-150'
+                    : 'w-full rounded-xl border border-transparent bg-surface px-3 py-2 text-left text-sm text-text transition-all duration-150 hover:translate-x-0.5 hover:border-border hover:text-text-strong'
                 }
                 onClick={() => onSelect(asset)}
               >

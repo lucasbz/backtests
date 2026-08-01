@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useCurrencyInput } from './useCurrencyInput';
+import { fieldClasses } from '../styles/ui';
 
 export interface CurrencyInputProps {
   id?: string;
@@ -33,6 +34,7 @@ export function CurrencyInput({
       type="text"
       inputMode="numeric"
       autoComplete="off"
+      className={`${fieldClasses} w-40 text-right tabular-nums`}
       value={display}
       onChange={onChange}
       disabled={disabled}

@@ -7,7 +7,7 @@ import {
   type BacktestResult,
 } from '../api/client';
 import { BacktestResultCard } from './BacktestResultCard';
-import './StrategyComparison.css';
+import { buttonPrimaryClasses, errorBoxClasses, fieldClasses } from '../styles/ui';
 
 // Buy & Hold is always run as the fixed baseline for comparison, so it's
 // never offered as a pickable option below - see `filter` on `strategies`.
@@ -193,34 +193,43 @@ export function StrategyComparison({
     !loading;
 
   return (
-    <section className="strategy-comparison">
-      <form className="strategy-comparison__form" onSubmit={handleSubmit}>
+    <section className="text-left">
+      <form className="grid grid-cols-1 items-end gap-4 sm:grid-cols-2" onSubmit={handleSubmit}>
         <input id="bt-asset" type="hidden" value={asset} readOnly disabled />
 
-        <div className="strategy-comparison__field">
-          <label htmlFor="bt-start">Start date</label>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="bt-start" className="text-sm text-text">
+            Start date
+          </label>
           <input
             id="bt-start"
             type="date"
+            className={fieldClasses}
             value={start}
             onChange={(event) => setStart(event.target.value)}
           />
         </div>
 
-        <div className="strategy-comparison__field">
-          <label htmlFor="bt-end">End date</label>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="bt-end" className="text-sm text-text">
+            End date
+          </label>
           <input
             id="bt-end"
             type="date"
+            className={fieldClasses}
             value={end}
             onChange={(event) => setEnd(event.target.value)}
           />
         </div>
 
-        <div className="strategy-comparison__field">
-          <label htmlFor="bt-strategy">Strategy to compare against Buy &amp; Hold</label>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="bt-strategy" className="text-sm text-text">
+            Strategy to compare against Buy &amp; Hold
+          </label>
           <select
             id="bt-strategy"
+            className={fieldClasses}
             value={strategy}
             onChange={(event) => setStrategy(event.target.value)}
             disabled={strategies.length === 0}
@@ -234,11 +243,14 @@ export function StrategyComparison({
           </select>
         </div>
 
-        <div className="strategy-comparison__field strategy-comparison__field--stop-loss">
-          <div className="strategy-comparison__stop-loss-subfield">
-            <label htmlFor="bt-stop-loss-type">Stop-loss type</label>
+        <div className="flex flex-row gap-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <label htmlFor="bt-stop-loss-type" className="text-sm text-text">
+              Stop-loss type
+            </label>
             <select
               id="bt-stop-loss-type"
+              className={fieldClasses}
               value={stopLossType}
               onChange={(event) => setStopLossType(event.target.value)}
               disabled={stopLossTypes.length === 0}
@@ -252,8 +264,8 @@ export function StrategyComparison({
             </select>
           </div>
 
-          <div className="strategy-comparison__stop-loss-subfield">
-            <label htmlFor="bt-stop-loss-value">
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <label htmlFor="bt-stop-loss-value" className="text-sm text-text">
               Trigger value{stopLossType === 'percent' ? ' (%)' : stopLossType === 'fixed-amount' ? ' (R$)' : ''}
             </label>
             <input
@@ -263,6 +275,7 @@ export function StrategyComparison({
               step="0.01"
               inputMode="decimal"
               placeholder="None"
+              className={fieldClasses}
               value={stopLossValue}
               onChange={(event) => setStopLossValue(event.target.value)}
               disabled={stopLossType === 'none'}
@@ -270,28 +283,28 @@ export function StrategyComparison({
           </div>
         </div>
 
-        <button type="submit" disabled={!canSubmit}>
+        <button type="submit" className={`${buttonPrimaryClasses} col-span-full justify-self-start`} disabled={!canSubmit}>
           {loading ? 'Running…' : 'Run comparison'}
         </button>
       </form>
 
       {strategiesError && (
-        <div className="strategy-comparison__error" role="alert">
+        <div className={`${errorBoxClasses} mt-4`} role="alert">
           Could not load strategies: {strategiesError}
         </div>
       )}
 
       {stopLossTypesError && (
-        <div className="strategy-comparison__error" role="alert">
+        <div className={`${errorBoxClasses} mt-4`} role="alert">
           Could not load stop-loss types: {stopLossTypesError}
         </div>
       )}
 
       {(baselineResult || challengerResult || baselineError || challengerError) && (
-        <div className="strategy-comparison__results">
-          <div className="strategy-comparison__result-column">
+        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="min-w-0">
             {baselineError && (
-              <div className="strategy-comparison__error" role="alert">
+              <div className={errorBoxClasses} role="alert">
                 {baselineError}
               </div>
             )}
@@ -304,9 +317,9 @@ export function StrategyComparison({
             )}
           </div>
 
-          <div className="strategy-comparison__result-column">
+          <div className="min-w-0">
             {challengerError && (
-              <div className="strategy-comparison__error" role="alert">
+              <div className={errorBoxClasses} role="alert">
                 {challengerError}
               </div>
             )}

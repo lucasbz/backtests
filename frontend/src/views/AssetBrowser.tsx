@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
-import { AssetList } from '../components/AssetList';
+import { AssetListPanel } from '../components/AssetListPanel';
 import { AssetInfoPanel } from '../components/AssetInfoPanel';
 import { StrategyComparison } from '../components/StrategyComparison';
 import type { YearFilterValue } from '../components/YearFilter';
 import { useAssetInfo } from '../hooks/useAssetInfo';
 import { useAssetList } from '../hooks/useAssetList';
-import './AssetBrowser.css';
 
 export interface AssetBrowserProps {
   /** Restricts the asset list to symbols with data for this year, or 'all'. */
@@ -23,17 +22,19 @@ export interface AssetBrowserProps {
  * into the app - selecting an asset drives both the info panel and the
  * backtest form below it.
  *
- * Laid out as three columns: the "Stocks" asset list on the left edge, the
- * detail panel in the middle, and the "Others" asset list on the right
- * edge. Both lists are handed their slice of a single shared fetch (see
+ * Laid out as two regions: the asset list panel on the left edge, and the
+ * detail panel filling the rest of the width. The left panel (see
+ * `AssetListPanel`) hosts both the "Stocks" and "Others" groups as tabs -
+ * both are handed their slice of a single shared fetch (see
  * `useAssetList`), but each renders as its own independent `AssetList`
- * instance with its own local search box/state.
+ * instance with its own local search box/state, and both stay mounted
+ * regardless of which tab is active.
  *
- * Each side column can be collapsed independently via its own toggle button
- * (placed on the inner edge, facing the detail panel), freeing up width for
- * the detail panel once an asset is selected. Collapsing only hides the
- * column visually - the underlying `AssetList` stays mounted so its search
- * text and selection state survive re-expanding.
+ * The whole panel can be collapsed via a single toggle button (placed on
+ * its right edge, facing the detail panel), freeing up width for the
+ * detail panel once an asset is selected. Collapsing only hides the panel
+ * visually - the underlying `AssetList` instances stay mounted so their
+ * search text and selection state survive re-expanding.
  *
  * The asset's info (earliest/latest imported date) is fetched once here
  * and shared: it's shown directly in `AssetInfoPanel` and also used to
@@ -41,8 +42,6 @@ export interface AssetBrowserProps {
  */
 export function AssetBrowser({ year, balance }: AssetBrowserProps) {
   const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
-  const [stocksCollapsed, setStocksCollapsed] = useState(false);
-  const [othersCollapsed, setOthersCollapsed] = useState(false);
   const { info, loading, error } = useAssetInfo(selectedAsset);
   const {
     stocks,
@@ -73,37 +72,18 @@ export function AssetBrowser({ year, balance }: AssetBrowserProps) {
   }
 
   return (
-    <div className="asset-browser">
-      <div
-        className={
-          stocksCollapsed
-            ? 'asset-browser__side asset-browser__side--left asset-browser__side--collapsed'
-            : 'asset-browser__side asset-browser__side--left'
-        }
-      >
-        <div className="asset-browser__side-list">
-          <AssetList
-            label="Stocks"
-            year={year}
-            items={stocks}
-            selected={selectedAsset}
-            onSelect={setSelectedAsset}
-            loading={assetsLoading}
-            error={assetsError}
-          />
-        </div>
-        <button
-          type="button"
-          className="asset-browser__toggle"
-          onClick={() => setStocksCollapsed((collapsed) => !collapsed)}
-          aria-pressed={stocksCollapsed}
-          aria-label={stocksCollapsed ? 'Expand Stocks list' : 'Collapse Stocks list'}
-        >
-          {stocksCollapsed ? '›' : '‹'}
-        </button>
-      </div>
+    <div className="flex items-stretch gap-6">
+      <AssetListPanel
+        year={year}
+        stocks={stocks}
+        others={others}
+        selected={selectedAsset}
+        onSelect={setSelectedAsset}
+        loading={assetsLoading}
+        error={assetsError}
+      />
 
-      <div className="asset-browser__detail">
+      <div className="flex min-w-0 flex-1 flex-col gap-10">
         {selectedAsset ? (
           <>
             <AssetInfoPanel info={info} loading={loading} error={error} />
@@ -115,37 +95,8 @@ export function AssetBrowser({ year, balance }: AssetBrowserProps) {
             />
           </>
         ) : (
-          <p className="asset-browser__empty">Select an asset to get started.</p>
+          <p className="py-10 text-text">Select an asset to get started.</p>
         )}
-      </div>
-
-      <div
-        className={
-          othersCollapsed
-            ? 'asset-browser__side asset-browser__side--right asset-browser__side--collapsed'
-            : 'asset-browser__side asset-browser__side--right'
-        }
-      >
-        <button
-          type="button"
-          className="asset-browser__toggle"
-          onClick={() => setOthersCollapsed((collapsed) => !collapsed)}
-          aria-pressed={othersCollapsed}
-          aria-label={othersCollapsed ? 'Expand Others list' : 'Collapse Others list'}
-        >
-          {othersCollapsed ? '‹' : '›'}
-        </button>
-        <div className="asset-browser__side-list">
-          <AssetList
-            label="Others"
-            year={year}
-            items={others}
-            selected={selectedAsset}
-            onSelect={setSelectedAsset}
-            loading={assetsLoading}
-            error={assetsError}
-          />
-        </div>
       </div>
     </div>
   );
