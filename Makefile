@@ -7,6 +7,7 @@ END ?= 2026-07-30
 
 STRATEGY ?= buy-and-hold
 COMPARE_STRATEGY ?= two-candle-breakout
+YEAR ?= 0
 
 ADDR ?= :8080
 
@@ -26,6 +27,12 @@ compare:
 
 v-compare:
 	go run ./cmd compare -v -asset $(ASSET) -start $(START) -end $(END) -strategy $(COMPARE_STRATEGY) -balance $(BALANCE)
+
+scan:
+	go run ./cmd scan -start $(START) -end $(END) -strategy $(COMPARE_STRATEGY) -balance $(BALANCE) -year $(YEAR)
+
+v-scan:
+	go run ./cmd scan -v -start $(START) -end $(END) -strategy $(COMPARE_STRATEGY) -balance $(BALANCE) -year $(YEAR)
 
 info:
 	go run ./cmd info -asset $(ASSET)

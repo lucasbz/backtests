@@ -2,14 +2,15 @@ import { useState } from 'react';
 import { AssetList } from './AssetList';
 import type { YearFilterValue } from './YearFilter';
 import { buttonGhostClasses, chipClasses } from '../styles/ui';
+import type { AssetEntry } from '../api/client';
 
 export interface AssetListPanelProps {
   /** Restricts context for the "no assets" empty-state message. */
   year: YearFilterValue;
   /** The "Stocks" group's assets - already fetched/split by the caller. */
-  stocks: string[];
+  stocks: AssetEntry[];
   /** The "Others" group's assets - already fetched/split by the caller. */
-  others: string[];
+  others: AssetEntry[];
   selected: string | null;
   onSelect: (asset: string) => void;
   loading: boolean;

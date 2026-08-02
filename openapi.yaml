@@ -136,13 +136,29 @@ paths:
             otherwise - including when the ticker has no registry entry at
             all (e.g. it was imported before assets.json existed and the
             importer hasn't been re-run since).
+
+
+            Each entry's `volume` (that year's total trading volume, in
+            major currency units - same convention as a candle's `volume`
+            field, see `Candle`) is only present when the request includes
+            `year`; it's omitted entirely (not `null`) on an unfiltered
+            request, since volume is meaningless without a specific year to
+            sum over.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AssetsResponse"
-              example:
-                stocks: ["ITUB4", "PETR3", "PETR4", "VALE3"]
-                others: ["BOVA11", "IBOV11"]
+              examples:
+                noYearFilter:
+                  summary: No `year` filter - volume omitted
+                  value:
+                    stocks: [{ ticker: "ITUB4" }, { ticker: "PETR3" }, { ticker: "PETR4" }, { ticker: "VALE3" }]
+                    others: [{ ticker: "BOVA11" }, { ticker: "IBOV11" }]
+                yearFilter:
+                  summary: "`year=2015` - sorted by descending volume, volume present"
+                  value:
+                    stocks: [{ ticker: "PETR4", volume: 45123456.78 }, { ticker: "VALE3", volume: 30111222.33 }, { ticker: "ITUB4", volume: 12000000.0 }]
+                    others: [{ ticker: "BOVA11", volume: 987654.32 }]
         "400":
           description: The `year` query param was present but not a valid integer.
           content:
@@ -389,6 +405,100 @@ paths:
           description: >
             Unexpected failure reading/computing over already-validated
             input (e.g. corrupt imported data on disk).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/scan:
+    post:
+      operationId: runScan
+      summary: >
+        Run a strategy against every available asset (optionally restricted
+        to a year), compared against a Buy & Hold baseline for each -
+        equivalent to the `scan` CLI command. Same request shape as
+        `POST /api/backtest` minus `asset` (a scan runs every asset, not
+        one) plus `year`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanRequest"
+            example:
+              strategy: sma-crossover
+              strategyParams: { shortPeriod: 10, longPeriod: 30 }
+              stopLoss:
+                type: percent
+                value: 5
+              start: "2015-01-01"
+              end: "2015-12-30"
+              balance: "10000.00"
+              year: 2015
+      responses:
+        "200":
+          description: >
+            One entry per scanned asset (the asset universe from
+            `cotahist.ListAssets(year)`, same as `GET /api/assets`), sorted
+            with every successfully-scanned asset first (by `delta`
+            descending - biggest winners first), then every asset whose
+            backtest failed to load/run, last. This endpoint always returns
+            `200` once the request itself is valid and the asset universe
+            could be listed - an individual asset's backtest failing (e.g.
+            corrupt imported data) does **not** fail the whole request, it
+            just produces an error-only entry for that asset (see
+            `ScanResult`). Deliberately lean: no per-operation `operations`
+            arrays - drill into a specific asset via `POST /api/backtest` or
+            the CLI's `compare` once a candidate is found here.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScanResult"
+              example:
+                - asset: PETR4
+                  baselineProfitPercentage: -27.77
+                  challengerProfitPercentage: 12.34
+                  challengerTotalOperations: 6
+                  delta: 40.11
+                  won: true
+                - asset: VALE3
+                  baselineProfitPercentage: 8.1
+                  challengerProfitPercentage: 8.1
+                  challengerTotalOperations: 0
+                  delta: 0
+                  won: false
+                - asset: XPTO3
+                  error: "loading candles for XPTO3: ..."
+        "400":
+          description: >
+            Invalid input - the same up-front validation
+            `POST /api/backtest` performs (minus anything `asset`-specific,
+            since there is no single `asset` here): missing required
+            field(s) (`start`, `end`, `strategy`, `balance`), malformed JSON
+            body, unparseable/non-positive `balance`, unknown `strategy`, a
+            `strategyParams` missing a key `strategy` requires or with an
+            out-of-range value, unparseable `start`/`end`, a `stopLoss`
+            present without a `type`, an unknown `stopLoss.type`, or an
+            invalid `stopLoss.value`. See `POST /api/backtest`'s `400`
+            examples for the exact message shapes - they're produced by the
+            same validation code.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missingFields:
+                  value:
+                    error: "start, end, strategy and balance are all required"
+                unknownStrategy:
+                  value:
+                    error: "unknown strategy \"nope\", available: buy-and-hold"
+        "500":
+          description: >
+            Unexpected server-side failure listing the asset universe (e.g.
+            `resources/cotahist` unreadable).
           content:
             application/json:
               schema:
@@ -696,6 +806,24 @@ components:
           format: date
           example: "2026-07-30"
 
+    AssetEntry:
+      type: object
+      required: [ticker]
+      properties:
+        ticker:
+          type: string
+          example: "PETR4"
+        volume:
+          type: number
+          nullable: false
+          description: >
+            That year's total trading volume, in major currency units (same
+            convention as a candle's `volume` field, see `Candle`). Only
+            present when the request that produced this entry included a
+            `year` query param; omitted entirely otherwise (volume is
+            meaningless without a specific year to sum over).
+          example: 45123456.78
+
     AssetsResponse:
       type: object
       required: [stocks, others]
@@ -706,16 +834,16 @@ components:
             Common equities (ordinary/preferred share classes), e.g.
             `PETR4`, `PETR3`, `VALE3`, `ITUB4`.
           items:
-            type: string
-          example: ["ITUB4", "PETR3", "PETR4", "VALE3"]
+            $ref: "#/components/schemas/AssetEntry"
+          example: [{ ticker: "ITUB4" }, { ticker: "PETR3" }, { ticker: "PETR4" }, { ticker: "VALE3" }]
         others:
           type: array
           description: >
             Everything else - units, ETFs, BDRs, index-tracking tickers,
             e.g. `IBOV11`, `BOVA11`.
           items:
-            type: string
-          example: ["BOVA11", "IBOV11"]
+            $ref: "#/components/schemas/AssetEntry"
+          example: [{ ticker: "BOVA11" }, { ticker: "IBOV11" }]
 
     StrategyParam:
       type: object
@@ -865,6 +993,55 @@ components:
                 candle's close must be above the short EMA. The sell side is
                 unaffected by the EMAs.
           example: { shortPeriod: 5, longPeriod: 20 }
+
+    ScanRequest:
+      type: object
+      required: [start, end, strategy, balance]
+      description: >
+        Same request as `BacktestRequest`, minus `asset` (a scan runs every
+        available asset, not one - see `year` below) and `verbose` (a scan's
+        response never includes per-operation detail, see `ScanResult`).
+      properties:
+        start:
+          type: string
+          format: date
+          description: Same as `BacktestRequest.start`.
+          example: "2015-01-01"
+        end:
+          type: string
+          format: date
+          description: Same as `BacktestRequest.end`.
+          example: "2015-12-30"
+        strategy:
+          type: string
+          description: >
+            Same as `BacktestRequest.strategy` - the "challenger" strategy
+            run against each asset's Buy & Hold baseline. One of the `name`
+            values returned by `GET /api/strategies`.
+          example: sma-crossover
+        balance:
+          type: string
+          description: Same as `BacktestRequest.balance`.
+          example: "10000.00"
+        stopLoss:
+          $ref: "#/components/schemas/StopLossRequest"
+        strategyParams:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: number
+          description: >
+            Same meaning as `BacktestRequest.strategyParams` - see that
+            field for the full per-strategy required-key documentation.
+          example: { shortPeriod: 10, longPeriod: 30 }
+        year:
+          type: integer
+          description: >
+            Optional. Same filter as `GET /api/assets`' `year` query param:
+            when present (non-zero), only tickers with imported data for
+            this year are scanned. Omit (or send `0`) to scan every
+            imported asset.
+          example: 2015
 
     StopLossRequest:
       type: object
@@ -1119,3 +1296,62 @@ components:
             request (not present in the JSON at all, not `null` or `[]`).
           items:
             $ref: "#/components/schemas/Operation"
+
+    ScanResult:
+      type: object
+      description: >
+        One asset's outcome from `POST /api/scan`. Two mutually-exclusive
+        shapes, distinguished by whether `error` is present:
+          - Success: `asset` plus `baselineProfitPercentage`,
+            `challengerProfitPercentage`, `challengerTotalOperations`,
+            `delta` and `won` are all present; `error` is omitted.
+          - Failure (that asset's backtest failed to load/run, e.g. corrupt
+            imported data): only `asset` and `error` are present - every
+            numeric/boolean field above is omitted entirely (not sent as
+            `0`/`false`), so the two shapes are never confusable.
+      required: [asset]
+      properties:
+        asset:
+          type: string
+          example: PETR4
+        baselineProfitPercentage:
+          type: number
+          description: >
+            The Buy & Hold baseline's `profitPercentage` for this asset,
+            same meaning as `BacktestResult.profitPercentage`. Omitted on a
+            failed entry.
+          example: -27.77
+        challengerProfitPercentage:
+          type: number
+          description: >
+            The requested `strategy`'s `profitPercentage` for this asset.
+            Omitted on a failed entry.
+          example: 12.34
+        challengerTotalOperations:
+          type: integer
+          description: >
+            The requested `strategy`'s `totalOperations` for this asset -
+            included specifically so a "win" that's really just "the
+            strategy never traded and the baseline happened to lose money"
+            is visibly distinguishable from a win earned by actually
+            trading. Omitted on a failed entry.
+          example: 6
+        delta:
+          type: number
+          description: >
+            `challengerProfitPercentage - baselineProfitPercentage`, in
+            percentage points. Omitted on a failed entry.
+          example: 40.11
+        won:
+          type: boolean
+          description: >
+            `delta > 0`, strictly - an exact tie is not a win. Omitted on a
+            failed entry.
+          example: true
+        error:
+          type: string
+          description: >
+            Present only on a failed entry - why this asset's backtest
+            couldn't be run (e.g. a candle-loading failure). Every other
+            field above is omitted when this is present.
+          example: "loading candles for XPTO3: ..."

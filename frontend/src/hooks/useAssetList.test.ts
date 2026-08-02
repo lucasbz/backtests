@@ -25,15 +25,18 @@ describe('useAssetList', () => {
   });
 
   it('fetches without a year param for "all", and splits stocks/others', async () => {
-    const response: AssetsResponse = { stocks: ['PETR4'], others: ['BOVA11'] };
+    const response: AssetsResponse = {
+      stocks: [{ ticker: 'PETR4' }],
+      others: [{ ticker: 'BOVA11' }],
+    };
     mockedGetAssets.mockResolvedValue(response);
 
     const { result } = renderHook(() => useAssetList('all'));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    expect(result.current.stocks).toEqual(['PETR4']);
-    expect(result.current.others).toEqual(['BOVA11']);
+    expect(result.current.stocks).toEqual([{ ticker: 'PETR4' }]);
+    expect(result.current.others).toEqual([{ ticker: 'BOVA11' }]);
     expect(mockedGetAssets).toHaveBeenCalledWith(undefined);
   });
 
@@ -72,7 +75,7 @@ describe('useAssetList', () => {
     const firstPromise = new Promise<AssetsResponse>((resolve) => {
       resolveFirst = resolve;
     });
-    const secondResponse: AssetsResponse = { stocks: ['VALE3'], others: [] };
+    const secondResponse: AssetsResponse = { stocks: [{ ticker: 'VALE3' }], others: [] };
 
     mockedGetAssets.mockImplementationOnce(() => firstPromise);
     mockedGetAssets.mockResolvedValueOnce(secondResponse);
@@ -84,12 +87,12 @@ describe('useAssetList', () => {
     rerender({ year: 2024 });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.stocks).toEqual(['VALE3']);
+    expect(result.current.stocks).toEqual([{ ticker: 'VALE3' }]);
 
-    resolveFirst!({ stocks: ['STALE'], others: [] });
+    resolveFirst!({ stocks: [{ ticker: 'STALE' }], others: [] });
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(result.current.stocks).toEqual(['VALE3']);
+    expect(result.current.stocks).toEqual([{ ticker: 'VALE3' }]);
   });
 });

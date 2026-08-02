@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Rhymond/go-money"
+
 	"github.com/lucasbz/backtests/internal/domain"
 )
 
@@ -151,10 +153,31 @@ func ListAssetsFrom(dir string, year int) ([]string, error) {
 		return tickers, nil
 	}
 
-	type tickerVolume struct {
-		ticker string
-		volume int64
+	volumes, err := tickerVolumesFor(dir, entries, year)
+	if err != nil {
+		return nil, err
 	}
+
+	tickers := make([]string, len(volumes))
+	for i, tv := range volumes {
+		tickers[i] = tv.ticker
+	}
+	return tickers, nil
+}
+
+// tickerVolume pairs a ticker with its total traded volume for a single
+// year, in money.Money's minor-unit (cents) integer amount.
+type tickerVolume struct {
+	ticker string
+	volume int64
+}
+
+// tickerVolumesFor computes each directory entry's total year volume (for
+// entries that are directories with a <TICKER>_<year>.json file inside),
+// sorted by that volume descending (ties broken alphabetically by ticker).
+// Shared by ListAssetsFrom and ListAssetsWithVolumeFrom so both read/sum
+// each ticker's year file exactly once.
+func tickerVolumesFor(dir string, entries []os.DirEntry, year int) ([]tickerVolume, error) {
 	volumes := make([]tickerVolume, 0, len(entries))
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -185,11 +208,56 @@ func ListAssetsFrom(dir string, year int) ([]string, error) {
 		return volumes[i].ticker < volumes[j].ticker
 	})
 
-	tickers := make([]string, len(volumes))
-	for i, tv := range volumes {
-		tickers[i] = tv.ticker
+	return volumes, nil
+}
+
+// AssetVolume pairs a ticker with its total traded volume for a single
+// year, in major currency units (same convention as domain.Candle's JSON
+// Volume field, e.g. domain.Candle.MarshalJSON's use of AsMajorUnits).
+type AssetVolume struct {
+	Ticker string
+	Volume float64
+}
+
+// ListAssetsWithVolume returns tickers with imported data for year, paired
+// with each ticker's total volume for that year, from DefaultCotahistDir.
+// See ListAssetsWithVolumeFrom.
+func ListAssetsWithVolume(year int) ([]AssetVolume, error) {
+	return ListAssetsWithVolumeFrom(DefaultCotahistDir, year)
+}
+
+// ListAssetsWithVolumeFrom returns tickers with imported data under dir for
+// year, in the same descending-volume order as ListAssetsFrom(dir, year)
+// (ties broken alphabetically by ticker), paired with each ticker's total
+// volume for that year in major currency units. year must be non-zero -
+// volume has no meaning without a specific year to sum over, so year == 0
+// is a caller error, not silently zero volumes.
+func ListAssetsWithVolumeFrom(dir string, year int) ([]AssetVolume, error) {
+	if year == 0 {
+		return nil, fmt.Errorf("ListAssetsWithVolumeFrom: year must be non-zero")
 	}
-	return tickers, nil
+
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return []AssetVolume{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", dir, err)
+	}
+
+	volumes, err := tickerVolumesFor(dir, entries, year)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]AssetVolume, len(volumes))
+	for i, tv := range volumes {
+		result[i] = AssetVolume{
+			Ticker: tv.ticker,
+			Volume: money.New(tv.volume, domain.Currency).AsMajorUnits(),
+		}
+	}
+	return result, nil
 }
 
 func readYearFile(dir, asset string, year int) ([]domain.Candle, error) {

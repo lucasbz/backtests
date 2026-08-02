@@ -41,9 +41,9 @@ func validateAsset(asset string) error {
 }
 
 // NewHandler builds the HTTP handler for the API: GET /api/info,
-// POST /api/backtest, GET /api/strategies, GET /api/stop-losses,
-// GET /api/assets, GET /api/candles, GET /api/indicators/sma,
-// GET /api/indicators/ema.
+// POST /api/backtest, POST /api/scan, GET /api/strategies,
+// GET /api/stop-losses, GET /api/assets, GET /api/candles,
+// GET /api/indicators/sma, GET /api/indicators/ema.
 func NewHandler() http.Handler {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -52,6 +52,7 @@ func NewHandler() http.Handler {
 
 	engine.GET("/api/info", handleInfo)
 	engine.POST("/api/backtest", handleBacktest)
+	engine.POST("/api/scan", handleScan)
 	engine.GET("/api/strategies", handleStrategies)
 	engine.GET("/api/stop-losses", handleStopLosses)
 	engine.GET("/api/assets", handleAssets)
@@ -115,16 +116,27 @@ func handleStopLosses(c *gin.Context) {
 	c.JSON(http.StatusOK, stoploss.AvailableStopLossNamesList())
 }
 
+// assetEntry is one ticker in a GET /api/assets response. Volume is only
+// populated (non-nil) when the request includes a `year` query param -
+// total trading volume, in major currency units (same convention as
+// domain.Candle's JSON Volume field), summed over that year's candles. It's
+// omitted from the JSON entirely (via omitempty) when nil, so a no-year
+// request's response is just {"ticker": "..."} per entry.
+type assetEntry struct {
+	Ticker string   `json:"ticker"`
+	Volume *float64 `json:"volume,omitempty"`
+}
+
 // assetsResponse is the JSON shape for GET /api/assets: tickers split into
 // "stocks" (common equities, per the loaded asset registry's Type) and
 // "others" (everything else - units, ETFs, BDRs, and any ticker missing
 // from the registry, e.g. because it was imported before assets.json
 // existed and the importer hasn't been re-run since). Ordering within each
-// group is preserved from cotahist.ListAssets (alphabetical, or by
-// descending year volume when `year` is given).
+// group is preserved from cotahist.ListAssets/ListAssetsWithVolume
+// (alphabetical, or by descending year volume when `year` is given).
 type assetsResponse struct {
-	Stocks []string `json:"stocks"`
-	Others []string `json:"others"`
+	Stocks []assetEntry `json:"stocks"`
+	Others []assetEntry `json:"others"`
 }
 
 func handleAssets(c *gin.Context) {
@@ -138,10 +150,31 @@ func handleAssets(c *gin.Context) {
 		year = parsed
 	}
 
-	tickers, err := cotahist.ListAssets(year)
-	if err != nil {
-		writeError(c, http.StatusInternalServerError, err.Error())
-		return
+	// tickers preserves the same ordering contract regardless of whether
+	// volume was requested: alphabetical for year == 0, descending by that
+	// year's volume otherwise. volumeByTicker is only populated (and
+	// entries.Volume only set) when year != 0 - volume is meaningless
+	// without a specific year to sum over.
+	var tickers []string
+	volumeByTicker := map[string]float64{}
+	if year == 0 {
+		list, err := cotahist.ListAssets(year)
+		if err != nil {
+			writeError(c, http.StatusInternalServerError, err.Error())
+			return
+		}
+		tickers = list
+	} else {
+		list, err := cotahist.ListAssetsWithVolume(year)
+		if err != nil {
+			writeError(c, http.StatusInternalServerError, err.Error())
+			return
+		}
+		tickers = make([]string, len(list))
+		for i, av := range list {
+			tickers[i] = av.Ticker
+			volumeByTicker[av.Ticker] = av.Volume
+		}
 	}
 
 	registry, err := cotahist.LoadAssets()
@@ -150,12 +183,18 @@ func handleAssets(c *gin.Context) {
 		return
 	}
 
-	resp := assetsResponse{Stocks: []string{}, Others: []string{}}
+	resp := assetsResponse{Stocks: []assetEntry{}, Others: []assetEntry{}}
 	for _, ticker := range tickers {
+		entry := assetEntry{Ticker: ticker}
+		if year != 0 {
+			volume := volumeByTicker[ticker]
+			entry.Volume = &volume
+		}
+
 		if asset, ok := registry[ticker]; ok && asset.Type == domain.Stock {
-			resp.Stocks = append(resp.Stocks, ticker)
+			resp.Stocks = append(resp.Stocks, entry)
 		} else {
-			resp.Others = append(resp.Others, ticker)
+			resp.Others = append(resp.Others, entry)
 		}
 	}
 
@@ -261,6 +300,144 @@ func handleBacktest(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, result)
+}
+
+// scanRequest is the JSON body for POST /api/scan: the same shape as
+// backtestRequest minus Asset (a scan runs every available asset, not one),
+// plus Year, mirroring GET /api/assets' optional year filter.
+type scanRequest struct {
+	Start          string             `json:"start"`
+	End            string             `json:"end"`
+	Strategy       string             `json:"strategy"`
+	Balance        string             `json:"balance"`
+	StopLoss       *stopLossRequest   `json:"stopLoss"`
+	StrategyParams map[string]float64 `json:"strategyParams"`
+	// Year filters the scanned assets, same as GET /api/assets' year query
+	// param. 0 (absent) means every imported asset.
+	Year int `json:"year"`
+}
+
+// scanResultJSON is the lean JSON shape of one POST /api/scan response
+// entry - see backtest.ScanResult. A successful entry omits error; a
+// failed one populates only asset and error.
+type scanResultJSON struct {
+	Asset                      string   `json:"asset"`
+	BaselineProfitPercentage   *float64 `json:"baselineProfitPercentage,omitempty"`
+	ChallengerProfitPercentage *float64 `json:"challengerProfitPercentage,omitempty"`
+	ChallengerTotalOperations  *int     `json:"challengerTotalOperations,omitempty"`
+	Delta                      *float64 `json:"delta,omitempty"`
+	Won                        *bool    `json:"won,omitempty"`
+	Error                      *string  `json:"error,omitempty"`
+}
+
+// toScanResultJSON converts one backtest.ScanResult to its lean JSON shape
+// (see scanResultJSON).
+func toScanResultJSON(r backtest.ScanResult) scanResultJSON {
+	if r.Err != nil {
+		errMsg := r.Err.Error()
+		return scanResultJSON{Asset: r.Asset, Error: &errMsg}
+	}
+
+	baselinePct := r.Baseline.ProfitPercentage
+	challengerPct := r.Challenger.ProfitPercentage
+	challengerOps := r.Challenger.TotalOperations
+	delta := r.Delta
+	won := r.Won
+	return scanResultJSON{
+		Asset:                      r.Asset,
+		BaselineProfitPercentage:   &baselinePct,
+		ChallengerProfitPercentage: &challengerPct,
+		ChallengerTotalOperations:  &challengerOps,
+		Delta:                      &delta,
+		Won:                        &won,
+	}
+}
+
+// handleScan runs scanRequest.Strategy against every imported asset
+// (optionally restricted by scanRequest.Year) via backtest.Scan. A 400/500
+// here only ever reflects an up-front misconfiguration or a listing
+// failure - an individual asset's backtest failing surfaces as an "error"
+// entry in the 200 body instead (see backtest.Scan's doc comment).
+func handleScan(c *gin.Context) {
+	var req scanRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		writeError(c, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return
+	}
+
+	if req.Start == "" || req.End == "" || req.Strategy == "" || req.Balance == "" {
+		writeError(c, http.StatusBadRequest, "start, end, strategy and balance are all required")
+		return
+	}
+
+	startingBalance, err := domain.ParseMoney(req.Balance)
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "parsing balance: "+err.Error())
+		return
+	}
+	if !startingBalance.IsPositive() {
+		writeError(c, http.StatusBadRequest, "balance must be greater than zero")
+		return
+	}
+
+	// Early validation only, same as handleBacktest - backtest.Scan repeats
+	// this same check internally (see its doc comment), so this is purely
+	// about surfacing the error before doing any work.
+	if _, err := strategies.LoadStrategy(req.Strategy, req.StrategyParams); err != nil {
+		writeError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	var newStopLoss domain.StopLoss
+	if req.StopLoss != nil {
+		if req.StopLoss.Type == "" {
+			writeError(c, http.StatusBadRequest, "stopLoss.type is required when stopLoss is present")
+			return
+		}
+		newStopLoss, err = stoploss.LoadStopLoss(req.StopLoss.Type, req.StopLoss.Value)
+		if err != nil {
+			writeError(c, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
+	startDate, err := time.Parse("2006-01-02", req.Start)
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "parsing start: "+err.Error())
+		return
+	}
+	endDate, err := time.Parse("2006-01-02", req.End)
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "parsing end: "+err.Error())
+		return
+	}
+
+	assets, err := cotahist.ListAssets(req.Year)
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	results, err := backtest.Scan(backtest.ScanParams{
+		Assets:         assets,
+		Start:          startDate,
+		End:            endDate,
+		Balance:        startingBalance,
+		StrategyName:   req.Strategy,
+		StrategyParams: req.StrategyParams,
+		StopLoss:       newStopLoss,
+	})
+	if err != nil {
+		writeError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	resp := make([]scanResultJSON, len(results))
+	for i, r := range results {
+		resp[i] = toScanResultJSON(r)
+	}
+
+	c.JSON(http.StatusOK, resp)
 }
 
 // handleCandles serves an asset's raw daily candles for the requested

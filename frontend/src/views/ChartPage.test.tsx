@@ -26,7 +26,11 @@ const mockedGetAssets = vi.mocked(getAssets);
 const mockedGetAssetInfo = vi.mocked(getAssetInfo);
 
 function assetsResponse(overrides: Partial<AssetsResponse> = {}): AssetsResponse {
-  return { stocks: ['PETR4', 'VALE3'], others: ['BOVA11'], ...overrides };
+  return {
+    stocks: [{ ticker: 'PETR4' }, { ticker: 'VALE3' }],
+    others: [{ ticker: 'BOVA11' }],
+    ...overrides,
+  };
 }
 
 function assetInfo(overrides: Partial<AssetInfo> = {}): AssetInfo {

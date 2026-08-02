@@ -262,4 +262,139 @@ describe('CandlestickChart', () => {
       { time: '2024-01-30', value: 31.9 },
     ]);
   });
+
+  it('reveals and hides the custom indicator form via the "Add indicator" button and Cancel', async () => {
+    mockedGetCandles.mockResolvedValue(sampleCandles);
+    const user = userEvent.setup();
+
+    render(<CandlestickChart asset="PETR4" start="2024-01-01" end="2024-12-31" />);
+    await waitFor(() => expect(setDataMock).toHaveBeenCalled());
+
+    expect(screen.queryByLabelText(/type/i)).not.toBeInTheDocument();
+
+    const addButton = screen.getByRole('button', { name: /add indicator/i });
+    await user.click(addButton);
+
+    expect(screen.getByLabelText(/type/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/period/i)).toBeInTheDocument();
+
+    await user.click(addButton);
+    expect(screen.queryByLabelText(/type/i)).not.toBeInTheDocument();
+
+    await user.click(addButton);
+    expect(screen.getByLabelText(/type/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /cancel/i }));
+    expect(screen.queryByLabelText(/type/i)).not.toBeInTheDocument();
+  });
+
+  it('disables Add while the period is empty or non-positive', async () => {
+    mockedGetCandles.mockResolvedValue(sampleCandles);
+    const user = userEvent.setup();
+
+    render(<CandlestickChart asset="PETR4" start="2024-01-01" end="2024-12-31" />);
+    await waitFor(() => expect(setDataMock).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('button', { name: /add indicator/i }));
+    const addSubmitButton = screen.getByRole('button', { name: 'Add' });
+    const periodInput = screen.getByLabelText(/period/i);
+
+    expect(addSubmitButton).toBeDisabled();
+
+    await user.type(periodInput, '0');
+    expect(addSubmitButton).toBeDisabled();
+
+    await user.clear(periodInput);
+    await user.type(periodInput, '-5');
+    expect(addSubmitButton).toBeDisabled();
+
+    await user.clear(periodInput);
+    await user.type(periodInput, '21');
+    expect(addSubmitButton).not.toBeDisabled();
+  });
+
+  it('adding a custom EMA 21 indicator creates a new active chip, a line series, and collapses the form', async () => {
+    mockedGetCandles.mockResolvedValue(sampleCandles);
+    mockedGetIndicator.mockResolvedValue(ema8Points);
+    const user = userEvent.setup();
+
+    render(<CandlestickChart asset="PETR4" start="2024-01-01" end="2024-12-31" />);
+    await waitFor(() => expect(setDataMock).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('button', { name: /add indicator/i }));
+    await user.selectOptions(screen.getByLabelText(/type/i), 'ema');
+    await user.type(screen.getByLabelText(/period/i), '21');
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+
+    expect(screen.queryByLabelText(/type/i)).not.toBeInTheDocument();
+
+    const chip = screen.getByRole('button', { name: 'EMA 21' });
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
+
+    expect(mockedGetIndicator).toHaveBeenCalledWith(
+      'ema',
+      'PETR4',
+      '2024-01-01',
+      '2024-12-31',
+      21,
+    );
+
+    await waitFor(() =>
+      expect(addSeriesMock).toHaveBeenCalledWith(
+        'LineSeries',
+        expect.objectContaining({ title: 'EMA 21' }),
+      ),
+    );
+  });
+
+  it('adding a selection matching an existing preset just activates that preset chip, no duplicate', async () => {
+    mockedGetCandles.mockResolvedValue(sampleCandles);
+    mockedGetIndicator.mockResolvedValue(ema8Points);
+    const user = userEvent.setup();
+
+    render(<CandlestickChart asset="PETR4" start="2024-01-01" end="2024-12-31" />);
+    await waitFor(() => expect(setDataMock).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('button', { name: /add indicator/i }));
+    await user.selectOptions(screen.getByLabelText(/type/i), 'ema');
+    await user.type(screen.getByLabelText(/period/i), '8');
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+
+    expect(screen.getAllByRole('button', { name: 'EMA 8' })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'EMA 8' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('toggling a custom chip off removes its line series but keeps the chip visible', async () => {
+    mockedGetCandles.mockResolvedValue(sampleCandles);
+    mockedGetIndicator.mockResolvedValue(ema8Points);
+    const user = userEvent.setup();
+
+    render(<CandlestickChart asset="PETR4" start="2024-01-01" end="2024-12-31" />);
+    await waitFor(() => expect(setDataMock).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('button', { name: /add indicator/i }));
+    await user.selectOptions(screen.getByLabelText(/type/i), 'ema');
+    await user.type(screen.getByLabelText(/period/i), '21');
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+
+    await waitFor(() =>
+      expect(addSeriesMock).toHaveBeenCalledWith(
+        'LineSeries',
+        expect.objectContaining({ title: 'EMA 21' }),
+      ),
+    );
+    const lineSeries = lineSeriesByTitle['EMA 21'];
+
+    const chip = screen.getByRole('button', { name: 'EMA 21' });
+    await user.click(chip);
+
+    await waitFor(() => expect(removeSeriesMock).toHaveBeenCalledWith(lineSeries));
+    expect(screen.getByRole('button', { name: 'EMA 21' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+
+    await user.click(chip);
+    expect(screen.getByRole('button', { name: 'EMA 21' })).toHaveAttribute('aria-pressed', 'true');
+  });
 });

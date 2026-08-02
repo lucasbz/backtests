@@ -10,7 +10,7 @@ import {
 } from 'lightweight-charts';
 import { useCandles } from '../hooks/useCandles';
 import { useIndicators, type IndicatorSelection } from '../hooks/useIndicators';
-import { chipClasses, errorBoxClasses } from '../styles/ui';
+import { buttonPrimaryClasses, chipClasses, errorBoxClasses, fieldClasses } from '../styles/ui';
 
 export interface CandlestickChartProps {
   asset: string;
@@ -36,8 +36,17 @@ const CHART_COLORS = {
 // Colors for indicator overlay lines, deliberately distinct from
 // `CHART_COLORS.gain`/`.loss` above - those specifically mean gain/loss
 // elsewhere in the app, so an overlay line must never share a hue with
-// them. Cycled by position in the current selection.
-const INDICATOR_LINE_COLORS = ['#60a5fa', '#fbbf24', '#c084fc'];
+// them. Cycled by position in the current selection. Six entries (rather
+// than just the three preset chips) since presets plus user-added custom
+// indicators can now plausibly all be active at once.
+const INDICATOR_LINE_COLORS = [
+  '#60a5fa',
+  '#fbbf24',
+  '#c084fc',
+  '#f472b6',
+  '#22d3ee',
+  '#818cf8',
+];
 
 // Fixed preset list the picker below the chart offers - chosen to line up
 // with values already meaningful elsewhere in this app (`ema-trend-
@@ -75,6 +84,66 @@ export function CandlestickChart({ asset, start, end, indicators = [] }: Candles
         : [...current, selection];
     });
   }, []);
+
+  // Unlike `toggleIndicator` above, always ends with `selection` active -
+  // used by the "Add indicator" form below, where re-adding an
+  // already-active indicator should just leave it active rather than
+  // toggling it off.
+  const activateIndicator = useCallback((selection: IndicatorSelection) => {
+    setSelectedIndicators((current) => {
+      const key = indicatorKey(selection);
+      if (current.some((entry) => indicatorKey(entry) === key)) return current;
+      return [...current, selection];
+    });
+  }, []);
+
+  // User-added indicators (via the "Add indicator" form below), each
+  // rendered as its own permanent chip alongside `INDICATOR_PRESETS` -
+  // "permanent" meaning toggling one off just deactivates it (removes its
+  // line series) rather than removing the chip itself.
+  const [customIndicators, setCustomIndicators] = useState<IndicatorSelection[]>([]);
+
+  const [showAddIndicatorForm, setShowAddIndicatorForm] = useState(false);
+  const [newIndicatorType, setNewIndicatorType] = useState<IndicatorSelection['type']>('ema');
+  const [newIndicatorPeriod, setNewIndicatorPeriod] = useState('');
+
+  const parsedNewIndicatorPeriod = Number(newIndicatorPeriod);
+  const isNewIndicatorPeriodValid =
+    newIndicatorPeriod.trim() !== '' &&
+    Number.isInteger(parsedNewIndicatorPeriod) &&
+    parsedNewIndicatorPeriod > 0;
+
+  const resetAddIndicatorForm = useCallback(() => {
+    setShowAddIndicatorForm(false);
+    setNewIndicatorType('ema');
+    setNewIndicatorPeriod('');
+  }, []);
+
+  const handleAddIndicator = useCallback(() => {
+    if (!isNewIndicatorPeriodValid) return;
+
+    const selection: IndicatorSelection = {
+      type: newIndicatorType,
+      period: parsedNewIndicatorPeriod,
+    };
+    const key = indicatorKey(selection);
+    const alreadyKnown =
+      INDICATOR_PRESETS.some(({ selection: preset }) => indicatorKey(preset) === key) ||
+      customIndicators.some((entry) => indicatorKey(entry) === key);
+
+    if (!alreadyKnown) {
+      setCustomIndicators((current) => [...current, selection]);
+    }
+    activateIndicator(selection);
+    resetAddIndicatorForm();
+  }, [
+    isNewIndicatorPeriodValid,
+    newIndicatorType,
+    parsedNewIndicatorPeriod,
+    customIndicators,
+    activateIndicator,
+    resetAddIndicatorForm,
+  ]);
 
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -233,6 +302,91 @@ export function CandlestickChart({ asset, start, end, indicators = [] }: Candles
             </button>
           );
         })}
+
+        {customIndicators.map((selection) => {
+          const key = indicatorKey(selection);
+          const label = `${selection.type.toUpperCase()} ${selection.period}`;
+          const active = selectedIndicators.some((entry) => indicatorKey(entry) === key);
+          return (
+            <button
+              key={key}
+              type="button"
+              className={chipClasses(active)}
+              aria-pressed={active}
+              onClick={() => toggleIndicator(selection)}
+            >
+              {label}
+            </button>
+          );
+        })}
+
+        <button
+          type="button"
+          className={chipClasses(showAddIndicatorForm)}
+          aria-expanded={showAddIndicatorForm}
+          onClick={() =>
+            showAddIndicatorForm ? resetAddIndicatorForm() : setShowAddIndicatorForm(true)
+          }
+        >
+          {showAddIndicatorForm ? '− Add indicator' : '+ Add indicator'}
+        </button>
+
+        {showAddIndicatorForm && (
+          <div
+            className="flex flex-wrap items-center gap-2"
+            role="group"
+            aria-label="Add custom indicator"
+          >
+            <label htmlFor="new-indicator-type" className="text-sm text-text">
+              Type
+            </label>
+            <div className="w-20">
+              <select
+                id="new-indicator-type"
+                className={`${fieldClasses} py-1.5`}
+                value={newIndicatorType}
+                onChange={(event) =>
+                  setNewIndicatorType(event.target.value as IndicatorSelection['type'])
+                }
+              >
+                <option value="ema">EMA</option>
+                <option value="sma">SMA</option>
+              </select>
+            </div>
+
+            <label htmlFor="new-indicator-period" className="text-sm text-text">
+              Period
+            </label>
+            <div className="w-16">
+              <input
+                id="new-indicator-period"
+                type="number"
+                min="1"
+                step="1"
+                className={`${fieldClasses} py-1.5`}
+                value={newIndicatorPeriod}
+                onChange={(event) => setNewIndicatorPeriod(event.target.value)}
+              />
+            </div>
+
+            <button
+              type="button"
+              className={`${buttonPrimaryClasses} px-3 py-1.5`}
+              disabled={!isNewIndicatorPeriodValid}
+              onClick={handleAddIndicator}
+            >
+              Add
+            </button>
+
+            <button
+              type="button"
+              className="rounded-xl border border-border bg-surface px-3 py-1.5 text-sm text-text transition-colors duration-150 hover:border-accent/40 hover:text-text-strong"
+              onClick={resetAddIndicatorForm}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
 
       {loading && <p className="text-sm text-text">Loading chart…</p>}

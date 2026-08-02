@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -360,13 +361,247 @@ func TestHandleBacktest_NoStopLossOmitsIt(t *testing.T) {
 	}
 }
 
+func TestHandleScan_Valid(t *testing.T) {
+	chdirToRepoRoot(t)
+	body := []byte(`{"start":"2015-01-02","end":"2015-12-30","strategy":"two-candle-breakout","balance":"10000.00","year":2015}`)
+	rec := doRequest(t, http.MethodPost, "/api/scan", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var results []map[string]any
+	decodeJSON(t, rec, &results)
+	if len(results) == 0 {
+		t.Fatal("expected at least one scan result")
+	}
+
+	assets, err := cotahist.ListAssets(2015)
+	if err != nil {
+		t.Fatalf("ListAssets: %v", err)
+	}
+	if len(results) != len(assets) {
+		t.Errorf("got %d results, want %d (one per asset in year 2015)", len(results), len(assets))
+	}
+
+	byAsset := map[string]map[string]any{}
+	for _, r := range results {
+		asset, ok := r["asset"].(string)
+		if !ok || asset == "" {
+			t.Fatalf("result missing a non-empty asset: %+v", r)
+		}
+		byAsset[asset] = r
+	}
+
+	petr4, ok := byAsset["PETR4"]
+	if !ok {
+		t.Fatalf("results = %+v, want it to contain PETR4", results)
+	}
+	if _, ok := petr4["error"]; ok {
+		t.Errorf("PETR4 result has an error field: %+v", petr4)
+	}
+	for _, field := range []string{"baselineProfitPercentage", "challengerProfitPercentage", "challengerTotalOperations", "delta", "won"} {
+		if _, ok := petr4[field]; !ok {
+			t.Errorf("PETR4 result missing %q: %+v", field, petr4)
+		}
+	}
+}
+
+// TestHandleScan_SortedWinnersFirst checks the response array is sorted
+// with every non-errored entry (by delta descending) before any errored
+// entry, mirroring backtest.Scan's own sort order.
+func TestHandleScan_SortedWinnersFirst(t *testing.T) {
+	chdirToRepoRoot(t)
+	body := []byte(`{"start":"2015-01-02","end":"2015-12-30","strategy":"two-candle-breakout","balance":"10000.00","year":2015}`)
+	rec := doRequest(t, http.MethodPost, "/api/scan", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var results []map[string]any
+	decodeJSON(t, rec, &results)
+	if len(results) < 2 {
+		t.Fatalf("expected at least 2 results, got %d", len(results))
+	}
+
+	seenErr := false
+	prevDelta := 0.0
+	for i, r := range results {
+		if _, isErr := r["error"]; isErr {
+			seenErr = true
+			continue
+		}
+		if seenErr {
+			t.Fatalf("result[%d] = %+v has no error but comes after an errored entry", i, r)
+		}
+		delta, ok := r["delta"].(float64)
+		if !ok {
+			t.Fatalf("result[%d] missing delta: %+v", i, r)
+		}
+		if i > 0 && results[i-1]["error"] == nil && delta > prevDelta {
+			t.Errorf("result[%d] delta = %v, want <= previous entry's delta %v", i, delta, prevDelta)
+		}
+		prevDelta = delta
+	}
+}
+
+func TestHandleScan_MissingFields(t *testing.T) {
+	for _, body := range [][]byte{
+		[]byte(`{"end":"2015-12-30","strategy":"two-candle-breakout","balance":"10000.00"}`),
+		[]byte(`{"start":"2015-01-02","strategy":"two-candle-breakout","balance":"10000.00"}`),
+		[]byte(`{"start":"2015-01-02","end":"2015-12-30","balance":"10000.00"}`),
+		[]byte(`{"start":"2015-01-02","end":"2015-12-30","strategy":"two-candle-breakout"}`),
+	} {
+		rec := doRequest(t, http.MethodPost, "/api/scan", body)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("body=%s: status = %d, want %d", body, rec.Code, http.StatusBadRequest)
+		}
+	}
+}
+
+func TestHandleScan_InvalidJSON(t *testing.T) {
+	rec := doRequest(t, http.MethodPost, "/api/scan", []byte(`not json`))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandleScan_InvalidBalance(t *testing.T) {
+	body := []byte(`{"start":"2015-01-02","end":"2015-12-30","strategy":"two-candle-breakout","balance":"not-a-number"}`)
+	rec := doRequest(t, http.MethodPost, "/api/scan", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandleScan_ZeroBalance(t *testing.T) {
+	body := []byte(`{"start":"2015-01-02","end":"2015-12-30","strategy":"two-candle-breakout","balance":"0"}`)
+	rec := doRequest(t, http.MethodPost, "/api/scan", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandleScan_UnknownStrategy(t *testing.T) {
+	body := []byte(`{"start":"2015-01-02","end":"2015-12-30","strategy":"does-not-exist","balance":"10000.00"}`)
+	rec := doRequest(t, http.MethodPost, "/api/scan", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
+func TestHandleScan_StrategyParams_MissingRequiredParam(t *testing.T) {
+	body := []byte(`{"start":"2015-01-02","end":"2015-12-30","strategy":"sma-crossover","balance":"10000.00"}`)
+	rec := doRequest(t, http.MethodPost, "/api/scan", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
+func TestHandleScan_InvalidDate(t *testing.T) {
+	body := []byte(`{"start":"not-a-date","end":"2015-12-30","strategy":"two-candle-breakout","balance":"10000.00"}`)
+	rec := doRequest(t, http.MethodPost, "/api/scan", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandleScan_UnknownStopLossType(t *testing.T) {
+	body := []byte(`{"start":"2015-01-02","end":"2015-12-30","strategy":"two-candle-breakout","balance":"10000.00","stopLoss":{"type":"does-not-exist","value":5}}`)
+	rec := doRequest(t, http.MethodPost, "/api/scan", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
+func TestHandleScan_MissingStopLossType(t *testing.T) {
+	body := []byte(`{"start":"2015-01-02","end":"2015-12-30","strategy":"two-candle-breakout","balance":"10000.00","stopLoss":{"value":5}}`)
+	rec := doRequest(t, http.MethodPost, "/api/scan", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
+// TestHandleScan_WithStopLoss checks a valid stopLoss doesn't error.
+func TestHandleScan_WithStopLoss(t *testing.T) {
+	chdirToRepoRoot(t)
+	body := []byte(`{"start":"2015-01-02","end":"2015-12-30","strategy":"two-candle-breakout","balance":"10000.00","year":2015,"stopLoss":{"type":"percent","value":5}}`)
+	rec := doRequest(t, http.MethodPost, "/api/scan", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+// TestHandleScan_NoAssetsFoundStillReturns200: without chdirToRepoRoot,
+// cotahist.ListAssets(0) finds no resources/cotahist directory and returns
+// an empty universe - a 200 with an empty array, not an error.
+func TestHandleScan_NoAssetsFoundStillReturns200(t *testing.T) {
+	body := []byte(`{"start":"2015-01-02","end":"2015-12-30","strategy":"two-candle-breakout","balance":"10000.00"}`)
+	rec := doRequest(t, http.MethodPost, "/api/scan", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var results []map[string]any
+	decodeJSON(t, rec, &results)
+	if len(results) != 0 {
+		t.Errorf("results = %+v, want empty (no resources/cotahist directory found from this cwd)", results)
+	}
+}
+
+// TestHandleScan_DateRangeWithNoDataProducesZeroResultsNotErrors mirrors
+// TestHandleBacktest_Valid's "unknown ticker produces a zero-operations 200,
+// not an error" behavior, through backtest.Scan: no candles in range isn't
+// itself an error (see cotahist.LoadCandlesFrom).
+func TestHandleScan_DateRangeWithNoDataProducesZeroResultsNotErrors(t *testing.T) {
+	chdirToRepoRoot(t)
+	body := []byte(`{"start":"1990-01-01","end":"1990-12-30","strategy":"two-candle-breakout","balance":"10000.00","year":2015}`)
+	rec := doRequest(t, http.MethodPost, "/api/scan", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var results []map[string]any
+	decodeJSON(t, rec, &results)
+	if len(results) == 0 {
+		t.Fatal("expected at least one scan result")
+	}
+
+	for _, r := range results {
+		if _, isErr := r["error"]; isErr {
+			t.Fatalf("result %+v has an error, want a zero-value success entry", r)
+		}
+		if won, ok := r["won"].(bool); !ok || won {
+			t.Errorf("result %+v: won = %v, want false", r, r["won"])
+		}
+		if delta, ok := r["delta"].(float64); !ok || delta != 0 {
+			t.Errorf("result %+v: delta = %v, want 0", r, r["delta"])
+		}
+		if pct, ok := r["baselineProfitPercentage"].(float64); !ok || pct != 0 {
+			t.Errorf("result %+v: baselineProfitPercentage = %v, want 0", r, r["baselineProfitPercentage"])
+		}
+		if pct, ok := r["challengerProfitPercentage"].(float64); !ok || pct != 0 {
+			t.Errorf("result %+v: challengerProfitPercentage = %v, want 0", r, r["challengerProfitPercentage"])
+		}
+	}
+}
+
+// entryTickers extracts the Ticker field from a slice of assetEntry,
+// preserving order, for tests that just want the ticker strings.
+func entryTickers(entries []assetEntry) []string {
+	tickers := make([]string, len(entries))
+	for i, e := range entries {
+		tickers[i] = e.Ticker
+	}
+	return tickers
+}
+
 // allAssets flattens an assetsResponse's stocks/others back into a single
-// slice, preserving stocks-then-others order, for tests that don't care
-// about the grouping itself.
+// slice of ticker strings, preserving stocks-then-others order, for tests
+// that don't care about the grouping itself.
 func allAssets(resp assetsResponse) []string {
 	tickers := make([]string, 0, len(resp.Stocks)+len(resp.Others))
-	tickers = append(tickers, resp.Stocks...)
-	tickers = append(tickers, resp.Others...)
+	tickers = append(tickers, entryTickers(resp.Stocks)...)
+	tickers = append(tickers, entryTickers(resp.Others)...)
 	return tickers
 }
 
@@ -410,20 +645,26 @@ func TestHandleAssets_NoFilterGroupsStocksAndOthers(t *testing.T) {
 		t.Fatalf("LoadAssetsFrom: %v", err)
 	}
 
-	for _, ticker := range resp.Stocks {
-		if registry[ticker].Type != domain.Stock {
-			t.Errorf("stocks contains %q, whose registry Type is %q, not %q", ticker, registry[ticker].Type, domain.Stock)
+	for _, entry := range resp.Stocks {
+		if entry.Volume != nil {
+			t.Errorf("stocks entry %+v has non-nil Volume, want nil for a no-year request", entry)
+		}
+		if registry[entry.Ticker].Type != domain.Stock {
+			t.Errorf("stocks contains %q, whose registry Type is %q, not %q", entry.Ticker, registry[entry.Ticker].Type, domain.Stock)
 		}
 	}
-	for _, ticker := range resp.Others {
-		if registry[ticker].Type == domain.Stock {
-			t.Errorf("others contains %q, whose registry Type is %q", ticker, domain.Stock)
+	for _, entry := range resp.Others {
+		if entry.Volume != nil {
+			t.Errorf("others entry %+v has non-nil Volume, want nil for a no-year request", entry)
+		}
+		if registry[entry.Ticker].Type == domain.Stock {
+			t.Errorf("others contains %q, whose registry Type is %q", entry.Ticker, domain.Stock)
 		}
 	}
-	if !sort.StringsAreSorted(resp.Stocks) {
+	if !sort.StringsAreSorted(entryTickers(resp.Stocks)) {
 		t.Errorf("stocks = %v, want alphabetically sorted", resp.Stocks)
 	}
-	if !sort.StringsAreSorted(resp.Others) {
+	if !sort.StringsAreSorted(entryTickers(resp.Others)) {
 		t.Errorf("others = %v, want alphabetically sorted", resp.Others)
 	}
 }
@@ -461,9 +702,9 @@ func TestHandleAssets_YearFilterSortsByDescendingVolume(t *testing.T) {
 
 	var resp assetsResponse
 	decodeJSON(t, rec, &resp)
-	tickers := resp.Stocks
-	if len(tickers) < 2 {
-		t.Fatalf("expected at least 2 stock tickers for year 2015, got %v", tickers)
+	entries := resp.Stocks
+	if len(entries) < 2 {
+		t.Fatalf("expected at least 2 stock tickers for year 2015, got %v", entries)
 	}
 
 	from := time.Date(2015, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -483,21 +724,73 @@ func TestHandleAssets_YearFilterSortsByDescendingVolume(t *testing.T) {
 	}
 
 	prevVolume := int64(-1)
-	for _, ticker := range tickers {
-		volume := volumeOf(ticker)
+	for _, entry := range entries {
+		if entry.Volume == nil {
+			t.Fatalf("entry %+v has nil Volume, want non-nil for a year-filtered request", entry)
+		}
+		volume := volumeOf(entry.Ticker)
+
+		// The entry's reported Volume (major currency units) must be
+		// internally consistent with the independently-computed volumeOf
+		// (minor units / cents) - i.e. Volume*100 == volume, up to
+		// float64 rounding.
+		if got, want := math.Round(*entry.Volume*100), float64(volume); got != want {
+			t.Errorf("entry %+v: Volume*100 = %v, want %v (independently computed cents total)", entry, got, want)
+		}
+
 		if prevVolume != -1 && volume > prevVolume {
-			t.Errorf("tickers not sorted by descending volume: %q (volume %d) comes after a ticker with volume %d", ticker, volume, prevVolume)
+			t.Errorf("tickers not sorted by descending volume: %q (volume %d) comes after a ticker with volume %d", entry.Ticker, volume, prevVolume)
 		}
 		prevVolume = volume
 	}
 
 	// Sanity check: the response isn't just alphabetical order either
 	// (guards against a no-op sort that happens to look right above).
+	tickers := entryTickers(entries)
 	alphabetical := make([]string, len(tickers))
 	copy(alphabetical, tickers)
 	sort.Strings(alphabetical)
 	if reflect.DeepEqual(tickers, alphabetical) {
 		t.Errorf("tickers = %v looks alphabetically sorted, want descending-volume order for year filter", tickers)
+	}
+}
+
+// TestHandleAssets_VolumePresence checks that every entry's Volume pointer
+// is non-nil exactly when the request includes a year filter, and nil
+// otherwise - regardless of grouping (stocks vs. others).
+func TestHandleAssets_VolumePresence(t *testing.T) {
+	chdirToRepoRoot(t)
+
+	for _, tc := range []struct {
+		name       string
+		query      string
+		wantNonNil bool
+	}{
+		{name: "no year", query: "/api/assets", wantNonNil: false},
+		{name: "year=0 explicit", query: "/api/assets?year=0", wantNonNil: false},
+		{name: "year=2015", query: "/api/assets?year=2015", wantNonNil: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := doRequest(t, http.MethodGet, tc.query, nil)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+			}
+
+			var resp assetsResponse
+			decodeJSON(t, rec, &resp)
+			all := append(append([]assetEntry{}, resp.Stocks...), resp.Others...)
+			if len(all) == 0 {
+				t.Fatal("expected at least one asset entry")
+			}
+			for _, entry := range all {
+				if tc.wantNonNil && entry.Volume == nil {
+					t.Errorf("entry %+v has nil Volume, want non-nil", entry)
+				}
+				if !tc.wantNonNil && entry.Volume != nil {
+					t.Errorf("entry %+v has non-nil Volume (%v), want nil", entry, *entry.Volume)
+				}
+			}
+		})
 	}
 }
 

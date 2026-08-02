@@ -2,13 +2,20 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AssetList } from './AssetList';
+import type { AssetEntry } from '../api/client';
+
+const NO_VOLUME_ITEMS: AssetEntry[] = [
+  { ticker: 'PETR4' },
+  { ticker: 'VALE3' },
+  { ticker: 'ITUB4' },
+];
 
 function renderList(overrides: Partial<React.ComponentProps<typeof AssetList>> = {}) {
   return render(
     <AssetList
       label="Stocks"
       year="all"
-      items={['PETR4', 'VALE3', 'ITUB4']}
+      items={NO_VOLUME_ITEMS}
       selected={null}
       onSelect={vi.fn()}
       loading={false}
@@ -44,7 +51,7 @@ describe('AssetList', () => {
 
     await user.type(screen.getByRole('searchbox', { name: 'Search stocks' }), 'nonexistent');
 
-    expect(screen.getByText('No assets match "nonexistent".')).toBeInTheDocument();
+    expect(screen.getByText('No assets match the current filters.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'PETR4' })).not.toBeInTheDocument();
   });
 
@@ -84,5 +91,79 @@ describe('AssetList', () => {
     renderList({ items: [], year: 'all' });
 
     expect(screen.getByText('No assets available.')).toBeInTheDocument();
+  });
+
+  describe('volume filter', () => {
+    const VOLUME_ITEMS: AssetEntry[] = [
+      { ticker: 'PETR4', volume: 1_000_000 },
+      { ticker: 'VALE3', volume: 500_000 },
+      { ticker: 'ITUB4', volume: 100_000 },
+    ];
+
+    it('is absent when no item in the group has volume data', () => {
+      renderList({ items: NO_VOLUME_ITEMS });
+
+      expect(screen.queryByRole('spinbutton', { name: 'Minimum volume for Stocks' })).not.toBeInTheDocument();
+    });
+
+    it('renders when at least one item has volume data', () => {
+      renderList({ items: VOLUME_ITEMS, year: 2024 });
+
+      expect(screen.getByRole('spinbutton', { name: 'Minimum volume for Stocks' })).toBeInTheDocument();
+    });
+
+    it('filters out items below the typed threshold, keeping items at or above it', async () => {
+      const user = userEvent.setup();
+      renderList({ items: VOLUME_ITEMS, year: 2024 });
+
+      await user.type(
+        screen.getByRole('spinbutton', { name: 'Minimum volume for Stocks' }),
+        '500000',
+      );
+
+      expect(screen.getByRole('button', { name: 'PETR4' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'VALE3' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'ITUB4' })).not.toBeInTheDocument();
+    });
+
+    it('lets items without volume data through regardless of the threshold', async () => {
+      const user = userEvent.setup();
+      renderList({
+        items: [...VOLUME_ITEMS, { ticker: 'NOVOL3' }],
+        year: 2024,
+      });
+
+      await user.type(
+        screen.getByRole('spinbutton', { name: 'Minimum volume for Stocks' }),
+        '999999999',
+      );
+
+      expect(screen.getByRole('button', { name: 'NOVOL3' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'PETR4' })).not.toBeInTheDocument();
+    });
+
+    it('treats an empty/zero threshold as "no filter applied"', () => {
+      renderList({ items: VOLUME_ITEMS, year: 2024 });
+
+      expect(screen.getByRole('button', { name: 'PETR4' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'VALE3' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'ITUB4' })).toBeInTheDocument();
+    });
+
+    it('combines with the search text filter (AND, not OR)', async () => {
+      const user = userEvent.setup();
+      renderList({ items: VOLUME_ITEMS, year: 2024 });
+
+      await user.type(screen.getByRole('searchbox', { name: 'Search stocks' }), 'vale');
+      await user.type(
+        screen.getByRole('spinbutton', { name: 'Minimum volume for Stocks' }),
+        '600000',
+      );
+
+      // VALE3 matches the search text but not the volume threshold.
+      expect(screen.queryByRole('button', { name: 'VALE3' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'PETR4' })).not.toBeInTheDocument();
+      expect(screen.getByText('No assets match the current filters.')).toBeInTheDocument();
+    });
   });
 });

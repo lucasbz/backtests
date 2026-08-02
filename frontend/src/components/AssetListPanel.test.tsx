@@ -7,8 +7,8 @@ function renderPanel() {
   return render(
     <AssetListPanel
       year="all"
-      stocks={['PETR4', 'VALE3']}
-      others={['BOVA11']}
+      stocks={[{ ticker: 'PETR4' }, { ticker: 'VALE3' }]}
+      others={[{ ticker: 'BOVA11' }]}
       selected={null}
       onSelect={vi.fn()}
       loading={false}

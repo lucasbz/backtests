@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { ApiError, getAssets, type AssetsResponse } from '../api/client';
+import { ApiError, getAssets, type AssetEntry, type AssetsResponse } from '../api/client';
 import type { YearFilterValue } from '../components/YearFilter';
 
 export interface UseAssetListResult {
-  stocks: string[];
-  others: string[];
+  stocks: AssetEntry[];
+  others: AssetEntry[];
   loading: boolean;
   error: string | null;
 }

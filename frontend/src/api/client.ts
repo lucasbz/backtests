@@ -63,16 +63,26 @@ export function getAssetInfo(asset: string): Promise<AssetInfo> {
 
 // -- GET /api/assets -------------------------------------------------------
 
+export interface AssetEntry {
+  ticker: string;
+  // Trading volume (major currency units, e.g. reais) for the requested
+  // year. Present only when a `year` was passed to `getAssets` - absent
+  // (not `null`) for the "all years" request, since volume data doesn't
+  // exist outside a specific year.
+  volume?: number;
+}
+
 export interface AssetsResponse {
-  stocks: string[];
-  others: string[];
+  stocks: AssetEntry[];
+  others: AssetEntry[];
 }
 
 /**
  * List available assets, optionally filtered to those with data for a
  * given year. `stocks` holds common equities, `others` holds
  * units/ETFs/FIIs/BDRs/index-tracking tickers. Both arrays are `[]` (never
- * `null`) when nothing matches.
+ * `null`) when nothing matches. Already sorted server-side: by descending
+ * `volume` when `year` is given, alphabetically by `ticker` otherwise.
  */
 export function getAssets(year?: number): Promise<AssetsResponse> {
   const params = year !== undefined ? `?${new URLSearchParams({ year: String(year) }).toString()}` : '';
