@@ -15,6 +15,14 @@ func candleWithLowHigh(date string, low, high int64) domain.Candle {
 	return domain.Candle{Date: date, Low: newMoney(low), High: newMoney(high)}
 }
 
+// candleWithClose builds a domain.Candle with only Close set - the field
+// the indicator-backed strategies (crossoverStrategy, RSIThreshold) read,
+// mirroring candleWithLowHigh's convention above. close is in cents (same
+// units as newMoney), e.g. 2000 for R$20.00.
+func candleWithClose(date string, close int64) domain.Candle {
+	return domain.Candle{Date: date, Close: newMoney(close)}
+}
+
 func assertOrder(t *testing.T, label string, got domain.Order, wantDate string, wantPrice int64, wantQuantity int64, wantType domain.OrderType) {
 	t.Helper()
 	if got.Date != wantDate {

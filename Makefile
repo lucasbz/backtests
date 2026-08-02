@@ -1,12 +1,12 @@
 IMPORT_YEAR ?= 2011
 
 ASSET ?= PETR4
-
-START ?= 2015-01-02
-END ?= 2015-01-02
+BALANCE ?= 10000.00
+START ?= 2026-01-01
+END ?= 2026-07-30
 
 STRATEGY ?= buy-and-hold
-BALANCE ?= 10000.00
+COMPARE_STRATEGY ?= two-candle-breakout
 
 ADDR ?= :8080
 
@@ -17,6 +17,15 @@ import:
 
 backtest:
 	go run ./cmd backtest -asset $(ASSET) -start $(START) -end $(END) -strategy $(STRATEGY) -balance $(BALANCE)
+
+v-backtest:
+	go run ./cmd backtest -v -asset $(ASSET) -start $(START) -end $(END) -strategy $(STRATEGY) -balance $(BALANCE)
+
+compare:
+	go run ./cmd compare -asset $(ASSET) -start $(START) -end $(END) -strategy $(COMPARE_STRATEGY) -balance $(BALANCE)
+
+v-compare:
+	go run ./cmd compare -v -asset $(ASSET) -start $(START) -end $(END) -strategy $(COMPARE_STRATEGY) -balance $(BALANCE)
 
 info:
 	go run ./cmd info -asset $(ASSET)

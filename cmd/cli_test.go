@@ -215,14 +215,11 @@ func TestRun_Backtest_Verbose(t *testing.T) {
 		}
 	})
 
-	if !bytes.Contains([]byte(output), []byte("Operations:")) {
-		t.Errorf("output = %q, want it to contain %q", output, "Operations:")
+	if !bytes.Contains([]byte(output), []byte("Operations (1):")) {
+		t.Errorf("output = %q, want it to contain %q", output, "Operations (1):")
 	}
-	if !bytes.Contains([]byte(output), []byte("BUY")) {
-		t.Errorf("output = %q, want it to contain a BUY line", output)
-	}
-	if !bytes.Contains([]byte(output), []byte("SELL")) {
-		t.Errorf("output = %q, want it to contain a SELL line", output)
+	if !bytes.Contains([]byte(output), []byte("Buy date")) {
+		t.Errorf("output = %q, want it to contain the operations table header", output)
 	}
 }
 
@@ -231,13 +228,14 @@ func TestRun_Backtest_Verbose(t *testing.T) {
 // data producing at least one operation.
 func TestPrintResult_Verbose(t *testing.T) {
 	result := &backtest.Result{
-		StrategyName:    "Test Strategy",
-		StartingBalance: *money.New(10000, domain.Currency),
-		EndingBalance:   *money.New(11000, domain.Currency),
-		Profit:          *money.New(1000, domain.Currency),
-		TotalOperations: 1,
-		Gains:           1,
-		Losses:          0,
+		StrategyName:      "Test Strategy",
+		StartingBalance:   *money.New(10000, domain.Currency),
+		EndingBalance:     *money.New(11000, domain.Currency),
+		Profit:            *money.New(1000, domain.Currency),
+		TotalOperations:   1,
+		Gains:             1,
+		Losses:            0,
+		MaxDrawdownAmount: *money.New(0, domain.Currency),
 		Operations: []domain.Operation{
 			{
 				Date: "2020-01-01",
@@ -264,10 +262,384 @@ func TestPrintResult_Verbose(t *testing.T) {
 		printResult("PETR4", start, end, result, true)
 	})
 
-	for _, want := range []string{"Operations:", "BUY", "SELL", "2020-01-01", "2020-02-01"} {
+	for _, want := range []string{"Operations (1):", "Buy date", "Sell date", "2020-01-01", "2020-02-01"} {
 		if !bytes.Contains([]byte(output), []byte(want)) {
 			t.Errorf("output = %q, want it to contain %q", output, want)
 		}
+	}
+}
+
+func TestRun_Compare_Valid(t *testing.T) {
+	chdirToRepoRoot(t)
+
+	output := captureStdout(t, func() {
+		err := run([]string{
+			"compare",
+			"-asset", "PETR4",
+			"-start", "2015-01-02",
+			"-end", "2015-12-30",
+			"-strategy", "two-candle-breakout",
+			"-balance", "10000.00",
+		})
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	})
+
+	if !bytes.Contains([]byte(output), []byte("Baseline: Buy & Hold")) {
+		t.Errorf("output = %q, want it to contain the baseline label", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("Challenger: two-candle-breakout")) {
+		t.Errorf("output = %q, want it to contain the challenger label", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("Result:")) {
+		t.Errorf("output = %q, want it to contain a comparison summary line", output)
+	}
+}
+
+func TestRun_Compare_Verbose(t *testing.T) {
+	chdirToRepoRoot(t)
+
+	output := captureStdout(t, func() {
+		err := run([]string{
+			"compare",
+			"-asset", "PETR4",
+			"-start", "2015-01-02",
+			"-end", "2015-12-30",
+			"-strategy", "two-candle-breakout",
+			"-balance", "10000.00",
+			"-v",
+		})
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	})
+
+	if !bytes.Contains([]byte(output), []byte("Operations (")) {
+		t.Errorf("output = %q, want it to contain the verbose operations header", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("Buy date")) {
+		t.Errorf("output = %q, want it to contain the operations table header", output)
+	}
+}
+
+func TestRun_Compare_MissingArgs(t *testing.T) {
+	err := run([]string{"compare", "-asset", "PETR4"})
+	if err == nil {
+		t.Fatal("expected error for missing required flags")
+	}
+}
+
+func TestRun_Compare_MissingBalance(t *testing.T) {
+	err := run([]string{
+		"compare",
+		"-asset", "PETR4",
+		"-start", "2010-01-01",
+		"-end", "2010-12-31",
+		"-strategy", "two-candle-breakout",
+	})
+	if err == nil {
+		t.Fatal("expected error for missing balance")
+	}
+}
+
+func TestRun_Compare_UnknownStrategy(t *testing.T) {
+	err := run([]string{
+		"compare",
+		"-asset", "PETR4",
+		"-start", "2010-01-01",
+		"-end", "2010-12-31",
+		"-strategy", "does-not-exist",
+		"-balance", "10000.00",
+	})
+	if err == nil {
+		t.Fatal("expected error for unknown strategy")
+	}
+}
+
+// TestRun_Compare_BuyAndHoldChallengerRejected asserts -strategy buy-and-hold
+// is rejected for the challenger: Buy & Hold is always the fixed baseline
+// (see runCompare), so comparing it against itself is meaningless, mirroring
+// StrategyComparison.tsx's exclusion of it from the pickable strategy list.
+func TestRun_Compare_BuyAndHoldChallengerRejected(t *testing.T) {
+	err := run([]string{
+		"compare",
+		"-asset", "PETR4",
+		"-start", "2010-01-01",
+		"-end", "2010-12-31",
+		"-strategy", "buy-and-hold",
+		"-balance", "10000.00",
+	})
+	if err == nil {
+		t.Fatal("expected error when challenger strategy is buy-and-hold")
+	}
+}
+
+func TestRun_Compare_InvalidFlag(t *testing.T) {
+	err := run([]string{"compare", "-not-a-real-flag"})
+	if err == nil {
+		t.Fatal("expected error for unknown flag")
+	}
+}
+
+// writeConfigFile writes contents as a JSON config file in t.TempDir() and
+// returns its path.
+func writeConfigFile(t *testing.T, contents string) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	return path
+}
+
+func TestRun_Backtest_Config_AllFieldsFromFile(t *testing.T) {
+	chdirToRepoRoot(t)
+
+	configPath := writeConfigFile(t, `{
+		"asset": "PETR4",
+		"start": "2015-01-02",
+		"end": "2015-12-30",
+		"balance": "10000.00",
+		"strategy": "buy-and-hold"
+	}`)
+
+	output := captureStdout(t, func() {
+		err := run([]string{"backtest", "-config", configPath})
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	})
+
+	if !bytes.Contains([]byte(output), []byte("PETR4")) {
+		t.Errorf("output = %q, want it to contain the config file's asset", output)
+	}
+	if !bytes.Contains([]byte(output), []byte("Buy & Hold")) {
+		t.Errorf("output = %q, want it to contain the config file's strategy", output)
+	}
+}
+
+// TestRun_Backtest_Config_StrategyParams asserts a config file's
+// "strategyParams" object is threaded into strategies.LoadStrategy,
+// letting a parameterized strategy like "sma-crossover" (which requires
+// "shortPeriod"/"longPeriod" - see internal/strategies/crossover.go) run
+// successfully from -config alone, with no per-key CLI flag involved.
+func TestRun_Backtest_Config_StrategyParams(t *testing.T) {
+	chdirToRepoRoot(t)
+
+	configPath := writeConfigFile(t, `{
+		"asset": "PETR4",
+		"start": "2015-01-02",
+		"end": "2015-12-30",
+		"balance": "10000.00",
+		"strategy": "sma-crossover",
+		"strategyParams": {"shortPeriod": 5, "longPeriod": 20}
+	}`)
+
+	output := captureStdout(t, func() {
+		err := run([]string{"backtest", "-config", configPath})
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	})
+
+	if !bytes.Contains([]byte(output), []byte("SMA Crossover")) {
+		t.Errorf("output = %q, want it to contain the config file's strategy", output)
+	}
+}
+
+// TestRun_Backtest_Config_StrategyParams_MissingRequiredParam asserts a
+// parameterized strategy's own validation still runs when its params come
+// from the config file: sma-crossover requires both shortPeriod and
+// longPeriod, so a config file that only sets one of them must fail with
+// an error, not silently fall back to some default.
+func TestRun_Backtest_Config_StrategyParams_MissingRequiredParam(t *testing.T) {
+	configPath := writeConfigFile(t, `{
+		"asset": "PETR4",
+		"start": "2015-01-02",
+		"end": "2015-12-30",
+		"balance": "10000.00",
+		"strategy": "sma-crossover",
+		"strategyParams": {"shortPeriod": 5}
+	}`)
+
+	err := run([]string{"backtest", "-config", configPath})
+	if err == nil {
+		t.Fatal("expected error for a strategyParams object missing a required key")
+	}
+}
+
+// TestRun_Backtest_Config_FlagOverridesFile passes -strategy explicitly
+// alongside -config (whose strategy field names a different strategy), and
+// asserts the explicit flag wins, proving flags always override the config
+// file rather than the other way around.
+func TestRun_Backtest_Config_FlagOverridesFile(t *testing.T) {
+	chdirToRepoRoot(t)
+
+	configPath := writeConfigFile(t, `{
+		"asset": "PETR4",
+		"start": "2015-01-02",
+		"end": "2015-12-30",
+		"balance": "10000.00",
+		"strategy": "buy-and-hold"
+	}`)
+
+	output := captureStdout(t, func() {
+		err := run([]string{
+			"backtest",
+			"-config", configPath,
+			"-strategy", "two-candle-breakout",
+		})
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	})
+
+	if !bytes.Contains([]byte(output), []byte("Two-Candle Breakout")) {
+		t.Errorf("output = %q, want it to contain the explicitly-passed strategy", output)
+	}
+	if bytes.Contains([]byte(output), []byte("Buy & Hold")) {
+		t.Errorf("output = %q, want it to NOT contain the config file's strategy", output)
+	}
+}
+
+func TestRun_Backtest_Config_FileNotFound(t *testing.T) {
+	err := run([]string{"backtest", "-config", "/does/not/exist/config.json"})
+	if err == nil {
+		t.Fatal("expected error for missing config file")
+	}
+}
+
+func TestRun_Backtest_Config_MalformedJSON(t *testing.T) {
+	configPath := writeConfigFile(t, `{not valid json`)
+
+	err := run([]string{"backtest", "-config", configPath})
+	if err == nil {
+		t.Fatal("expected error for malformed config file")
+	}
+}
+
+// TestRun_Backtest_Config_UnknownField asserts a typo'd field name (e.g.
+// "assset" instead of "asset") is rejected with an error rather than
+// silently ignored, which would otherwise leave that flag at its empty
+// default with no clue why.
+func TestRun_Backtest_Config_UnknownField(t *testing.T) {
+	configPath := writeConfigFile(t, `{
+		"assset": "PETR4",
+		"start": "2015-01-02",
+		"end": "2015-12-30",
+		"balance": "10000.00",
+		"strategy": "buy-and-hold"
+	}`)
+
+	err := run([]string{"backtest", "-config", configPath})
+	if err == nil {
+		t.Fatal("expected error for unknown config field")
+	}
+}
+
+// TestRun_Backtest_Config_VerboseFromFile asserts "verbose": true in the
+// config file turns on the operations table just like -v would, when -v
+// itself isn't passed on the command line.
+func TestRun_Backtest_Config_VerboseFromFile(t *testing.T) {
+	chdirToRepoRoot(t)
+
+	configPath := writeConfigFile(t, `{
+		"asset": "PETR4",
+		"start": "2015-01-02",
+		"end": "2015-12-30",
+		"balance": "10000.00",
+		"strategy": "buy-and-hold",
+		"verbose": true
+	}`)
+
+	output := captureStdout(t, func() {
+		err := run([]string{"backtest", "-config", configPath})
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	})
+
+	if !bytes.Contains([]byte(output), []byte("Operations (")) {
+		t.Errorf("output = %q, want it to contain the operations table from the config file's verbose:true", output)
+	}
+}
+
+// TestRun_Backtest_Config_ExplicitFalseOverridesFileVerbose is the trickiest
+// case in the -v/verbose merge: Go's flag.Visit reports a bool flag as
+// visited even when it's explicitly set to its own zero value, so
+// "-v=false" on the command line must still be treated as an explicit
+// override of the config file's "verbose": true - not indistinguishable
+// from -v simply not being passed at all.
+func TestRun_Backtest_Config_ExplicitFalseOverridesFileVerbose(t *testing.T) {
+	chdirToRepoRoot(t)
+
+	configPath := writeConfigFile(t, `{
+		"asset": "PETR4",
+		"start": "2015-01-02",
+		"end": "2015-12-30",
+		"balance": "10000.00",
+		"strategy": "buy-and-hold",
+		"verbose": true
+	}`)
+
+	output := captureStdout(t, func() {
+		err := run([]string{"backtest", "-config", configPath, "-v=false"})
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	})
+
+	if bytes.Contains([]byte(output), []byte("Operations (")) {
+		t.Errorf("output = %q, want it to NOT contain the operations table since -v=false was passed explicitly", output)
+	}
+}
+
+// TestRun_Compare_Config_BuyAndHoldChallengerRejected asserts the
+// baseline-collision check (see TestRun_Compare_BuyAndHoldChallengerRejected)
+// still applies when -strategy comes from the config file rather than the
+// flag, proving the check runs against the merged effective value.
+func TestRun_Compare_Config_BuyAndHoldChallengerRejected(t *testing.T) {
+	configPath := writeConfigFile(t, `{
+		"asset": "PETR4",
+		"start": "2010-01-01",
+		"end": "2010-12-31",
+		"balance": "10000.00",
+		"strategy": "buy-and-hold"
+	}`)
+
+	err := run([]string{"compare", "-config", configPath})
+	if err == nil {
+		t.Fatal("expected error when config file's challenger strategy is buy-and-hold")
+	}
+}
+
+// TestRun_Compare_Config_StrategyParams mirrors
+// TestRun_Backtest_Config_StrategyParams for runCompare: the config file's
+// "strategyParams" must reach the challenger's strategies.LoadStrategy
+// call, not just runBacktest's.
+func TestRun_Compare_Config_StrategyParams(t *testing.T) {
+	chdirToRepoRoot(t)
+
+	configPath := writeConfigFile(t, `{
+		"asset": "PETR4",
+		"start": "2015-01-02",
+		"end": "2015-12-30",
+		"balance": "10000.00",
+		"strategy": "sma-crossover",
+		"strategyParams": {"shortPeriod": 5, "longPeriod": 20}
+	}`)
+
+	output := captureStdout(t, func() {
+		err := run([]string{"compare", "-config", configPath})
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	})
+
+	if !bytes.Contains([]byte(output), []byte("Challenger: sma-crossover")) {
+		t.Errorf("output = %q, want it to contain the challenger label", output)
 	}
 }
 

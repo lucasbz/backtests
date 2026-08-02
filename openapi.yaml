@@ -26,7 +26,8 @@ info:
       documented in the `Error` schema below, with an appropriate HTTP
       status code:
       - `400` - invalid/missing input (bad JSON, missing required field,
-        unparseable date/number, unknown strategy name, non-positive
+        unparseable date/number, unknown strategy name, an invalid/missing
+        `strategyParams` key for the chosen strategy, non-positive
         balance).
       - `404` - the request was well-formed but referred to something that
         doesn't exist (currently: an unimported/unknown asset on
@@ -160,18 +161,73 @@ paths:
   /api/strategies:
     get:
       operationId: listStrategies
-      summary: List the names accepted by `strategy` on `POST /api/backtest`.
+      summary: List the strategies accepted by `strategy` on `POST /api/backtest`.
       responses:
         "200":
           description: >
-            A JSON array of strategy name strings, sorted alphabetically.
+            A JSON array of strategy descriptors, sorted alphabetically by
+            `name`. `params` describes the `strategyParams` keys that
+            strategy expects (see `BacktestRequest.strategyParams` for the
+            authoritative per-strategy prose) - `[]` for a strategy that
+            takes none (e.g. `buy-and-hold`). This is a UI hint for
+            rendering the right inputs, not the source of validation truth:
+            the actual required-ness and cross-field rules (e.g.
+            `shortPeriod` < `longPeriod`) are still enforced server-side by
+            `POST /api/backtest` and surface as a normal `400` there.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  type: string
-              example: ["buy-and-hold"]
+                  $ref: "#/components/schemas/StrategyInfo"
+              example:
+                - name: buy-and-hold
+                  params: []
+                - name: ema-crossover
+                  params:
+                    - key: shortPeriod
+                      label: Short period
+                      default: 12
+                      min: 1
+                      step: 1
+                    - key: longPeriod
+                      label: Long period
+                      default: 26
+                      min: 2
+                      step: 1
+                - name: rsi-threshold
+                  params:
+                    - key: period
+                      label: RSI period
+                      default: 14
+                      min: 2
+                      step: 1
+                    - key: oversold
+                      label: Oversold threshold
+                      default: 30
+                      min: 0
+                      max: 100
+                      step: 1
+                    - key: overbought
+                      label: Overbought threshold
+                      default: 70
+                      min: 0
+                      max: 100
+                      step: 1
+                - name: sma-crossover
+                  params:
+                    - key: shortPeriod
+                      label: Short period
+                      default: 10
+                      min: 1
+                      step: 1
+                    - key: longPeriod
+                      label: Long period
+                      default: 30
+                      min: 2
+                      step: 1
+                - name: two-candle-breakout
+                  params: []
         "500":
           description: Unexpected server-side failure.
           content:
@@ -194,7 +250,7 @@ paths:
                 type: array
                 items:
                   type: string
-              example: ["fixed-amount", "none", "percent"]
+              example: ["fixed-amount", "none", "percent", "total-fixed-amount"]
         "500":
           description: Unexpected server-side failure.
           content:
@@ -242,6 +298,8 @@ paths:
                 gains: 0
                 losses: 1
                 winRate: 0
+                maxDrawdownPercentage: 27.768000000000004
+                maxDrawdownAmount: 2776.8
                 operations:
                   - date: "2015-01-02"
                     buyOrder:
@@ -252,15 +310,19 @@ paths:
                       date: "2015-12-30"
                       price: 6.76
                       quantity: 1068
+                    days: 362
         "400":
           description: >
             Invalid input. Possible messages include (not exhaustive):
             missing required field(s), an `asset` that doesn't match
             `^[A-Z0-9]+$`, malformed JSON body, unparseable `balance`,
-            non-positive `balance`, unknown `strategy`, unparseable
-            `start`/`end`, a `stopLoss` present without a `type`, an unknown
-            `stopLoss.type`, or a `stopLoss.value` invalid for that type
-            (e.g. zero/negative).
+            non-positive `balance`, unknown `strategy`, a `strategyParams`
+            missing a key `strategy` requires or with an out-of-range value
+            (e.g. `sma-crossover` without `longPeriod`, or `rsi-threshold`
+            with `oversold` >= `overbought`), unparseable `start`/`end`, a
+            `stopLoss` present without a `type`, an unknown `stopLoss.type`,
+            or a `stopLoss.value` invalid for that type (e.g.
+            zero/negative).
 
 
             Note: an unknown/not-yet-imported `asset` on
@@ -293,6 +355,12 @@ paths:
                 unknownStrategy:
                   value:
                     error: "unknown strategy \"nope\", available: buy-and-hold"
+                missingStrategyParam:
+                  value:
+                    error: "SMA Crossover: missing required \"longPeriod\" param"
+                invalidStrategyParam:
+                  value:
+                    error: "rsi-threshold: oversold (70) must be less than overbought (30)"
                 invalidDate:
                   value:
                     error: "parsing start: parsing time \"not-a-date\" as \"2006-01-02\": ..."
@@ -301,7 +369,7 @@ paths:
                     error: "stopLoss.type is required when stopLoss is present"
                 unknownStopLossType:
                   value:
-                    error: "unknown stop-loss type \"nope\", available: fixed-amount, none, percent"
+                    error: "unknown stop-loss type \"nope\", available: fixed-amount, none, percent, total-fixed-amount"
                 invalidStopLossValue:
                   value:
                     error: "percent stop-loss value must be greater than zero, got 0"
@@ -309,6 +377,89 @@ paths:
           description: >
             Unexpected failure reading/computing over already-validated
             input (e.g. corrupt imported data on disk).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/candles:
+    get:
+      operationId: getCandles
+      summary: >
+        Raw daily candles for an asset over an inclusive date range, for
+        charting (e.g. a candlestick view). Runs no strategy and returns no
+        derived result - just the underlying price/volume data, same shape
+        `POST /api/backtest`'s internal candle-loading uses.
+      parameters:
+        - name: asset
+          in: query
+          required: true
+          description: >
+            Ticker of the asset to look up, e.g. `PETR4`. Must match
+            `^[A-Z0-9]+$` (uppercase letters and digits only).
+          schema:
+            type: string
+            pattern: "^[A-Z0-9]+$"
+        - name: start
+          in: query
+          required: true
+          description: Inclusive start date, `YYYY-MM-DD`.
+          schema:
+            type: string
+            format: date
+          example: "2015-01-02"
+        - name: end
+          in: query
+          required: true
+          description: Inclusive end date, `YYYY-MM-DD`. Must not be before `start`.
+          schema:
+            type: string
+            format: date
+          example: "2015-12-30"
+      responses:
+        "200":
+          description: >
+            The asset's candles in the requested range, sorted by date
+            ascending. `[]` (not `null`) when the asset has no data in that
+            range - there is no `404` case for this endpoint.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CandlesResponse"
+              example:
+                - date: "2015-01-02"
+                  open: 9.36
+                  high: 9.5
+                  low: 9.3
+                  avg: 9.4
+                  close: 9.45
+                  quantity: 458200
+                  volume: 4309490.0
+                  trades: 312
+        "400":
+          description: >
+            Missing/empty `asset`/`start`/`end` query param, `asset` doesn't
+            match `^[A-Z0-9]+$`, unparseable `start`/`end`, or `end` before
+            `start`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missing:
+                  value:
+                    error: "asset, start and end are all required"
+                invalidAsset:
+                  value:
+                    error: 'asset must match ^[A-Z0-9]+$ (uppercase letters and digits only), got "../../etc"'
+                invalidDate:
+                  value:
+                    error: "parsing start: parsing time \"not-a-date\" as \"2006-01-02\": ..."
+                endBeforeStart:
+                  value:
+                    error: "end must not be before start"
+        "500":
+          description: Unexpected server-side failure.
           content:
             application/json:
               schema:
@@ -365,6 +516,65 @@ components:
             type: string
           example: ["BOVA11", "IBOV11"]
 
+    StrategyParam:
+      type: object
+      description: >
+        One parameter a strategy's `strategyParams` accepts, for a UI to
+        render an appropriately-labeled input. A hint only - see
+        `BacktestRequest.strategyParams` for the authoritative per-strategy
+        required-ness and cross-field rules, which are not expressible here
+        and are enforced server-side by `POST /api/backtest`.
+      required: [key, label, default, min, step]
+      properties:
+        key:
+          type: string
+          description: >
+            The key this param is set under in `strategyParams`, e.g.
+            `shortPeriod`.
+          example: shortPeriod
+        label:
+          type: string
+          description: Human-readable label for the input.
+          example: Short period
+        default:
+          type: number
+          description: Sensible prefilled value.
+          example: 10
+        min:
+          type: number
+          description: Inclusive lower bound, for the input's `min` attribute.
+          example: 1
+        max:
+          type: number
+          nullable: true
+          description: >
+            Inclusive upper bound, for the input's `max` attribute. Omitted
+            entirely from the JSON (never `null`) when unbounded.
+          example: 100
+        step:
+          type: number
+          description: Input `step` attribute, e.g. `1` for a period.
+          example: 1
+
+    StrategyInfo:
+      type: object
+      description: >
+        One entry in `GET /api/strategies`' response: a strategy's name plus
+        what params (if any) it expects.
+      required: [name, params]
+      properties:
+        name:
+          type: string
+          description: One of the names accepted by `strategy` on `POST /api/backtest`.
+          example: sma-crossover
+        params:
+          type: array
+          description: >
+            `[]` (never `null`) for a strategy that takes no params, e.g.
+            `buy-and-hold`.
+          items:
+            $ref: "#/components/schemas/StrategyParam"
+
     BacktestRequest:
       type: object
       required: [asset, start, end, strategy, balance]
@@ -391,7 +601,7 @@ components:
         strategy:
           type: string
           description: >
-            One of the names returned by `GET /api/strategies`, e.g.
+            One of the `name` values returned by `GET /api/strategies`, e.g.
             `buy-and-hold`.
           example: buy-and-hold
         balance:
@@ -408,6 +618,40 @@ components:
           default: false
           description: >
             When `true`, the response includes the `operations` array.
+        strategyParams:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: number
+          description: >
+            Optional named numeric params configuring `strategy`, keyed by
+            param name. Omit entirely (or send `{}`/`null`) for a strategy
+            that takes none - `buy-and-hold` and `two-candle-breakout`
+            both ignore it either way. Which keys are required, and what
+            they mean, depends on `strategy` (not a generic schema - mirrors
+            how `stopLoss.value`'s meaning is `stopLoss.type`-specific
+            above), and is enforced by that strategy's own constructor, not
+            by this schema:
+              - `sma-crossover` / `ema-crossover`: `shortPeriod` and
+                `longPeriod` - the number of candles each of the two moving
+                averages (Simple/Exponential respectively) is computed
+                over. Both required; `shortPeriod` must be strictly less
+                than `longPeriod`. The strategy buys, while flat, on the
+                candle where the short-period average crosses above the
+                long-period one, and sells, while holding, on the candle
+                where it crosses back below - both at that candle's closing
+                price. Produces no signal until both averages have enough
+                candles behind them to compute a value (`longPeriod`
+                candles into the backtest's range, at minimum).
+              - `rsi-threshold`: `period` (candles the RSI is computed
+                over), `oversold` and `overbought` (both 0-100, `oversold`
+                strictly less than `overbought`). All three required. Buys,
+                while flat, on the candle where RSI crosses below
+                `oversold`; sells, while holding, on the candle where RSI
+                crosses above `overbought` - both at that candle's closing
+                price. Produces no signal until RSI has `period`+1 candles
+                behind it.
+          example: { shortPeriod: 5, longPeriod: 20 }
 
     StopLossRequest:
       type: object
@@ -436,8 +680,27 @@ components:
                 5%. Must be > 0 and < 100 (>= 100 would produce a
                 zero/negative trigger price that could never fire, since a
                 candle's low can never be negative).
-              - `fixed-amount`: a currency amount below the entry price, in
-                BRL major units, e.g. `2.5` for R$2.50. Must be > 0.
+              - `fixed-amount`: a currency amount below the entry price, PER
+                SHARE, in BRL major units, e.g. `2.5` for R$2.50 below the
+                per-share entry price. Must be > 0. This is NOT a cap on the
+                total position's currency loss - the realized loss on the
+                whole position when this stop-loss fires is approximately
+                `value * quantity`, where quantity is however many shares the
+                backtest's position sizing bought. E.g. a 1000-share position
+                with `value: 2.5` can lose roughly R$2500 when the stop-loss
+                triggers, not R$2.50. To target a specific total loss, divide
+                it by the expected share quantity before sending it as
+                `value`.
+              - `total-fixed-amount`: a currency amount, in BRL major units,
+                that caps the position's TOTAL realized loss regardless of
+                how many shares it holds, e.g. `value: 500` for a maximum
+                R$500 loss on the whole position - contrast with
+                `fixed-amount` above, which is per share and has no such
+                cap. Must be > 0. Internally this divides `value` by the
+                position's quantity to derive a per-share trigger, floored
+                to the nearest cent, so the realized total loss when it
+                fires is `<= value`, short by at most a fraction of a cent
+                per share.
               - `none`: unused - there's no trigger to configure. Must be
                 `0` (or omitted, which is the same as `0`).
           example: 5
@@ -463,7 +726,7 @@ components:
 
     Operation:
       type: object
-      required: [date, buyOrder, sellOrder]
+      required: [date, buyOrder, sellOrder, days]
       properties:
         date:
           type: string
@@ -473,6 +736,68 @@ components:
           $ref: "#/components/schemas/Order"
         sellOrder:
           $ref: "#/components/schemas/Order"
+        days:
+          type: integer
+          description: >
+            Whole calendar days between the buy and sell dates
+            (`sellOrder.date - buyOrder.date`). `0` when both fall on the
+            same day.
+          example: 362
+
+    Candle:
+      type: object
+      required:
+        - date
+        - open
+        - high
+        - low
+        - avg
+        - close
+        - quantity
+        - volume
+        - trades
+      properties:
+        date:
+          type: string
+          format: date
+          example: "2015-01-02"
+        open:
+          type: number
+          description: Plain JSON number in BRL major units.
+          example: 9.36
+        high:
+          type: number
+          description: Plain JSON number in BRL major units.
+          example: 9.5
+        low:
+          type: number
+          description: Plain JSON number in BRL major units.
+          example: 9.3
+        avg:
+          type: number
+          description: Volume-weighted average price, plain JSON number in BRL major units.
+          example: 9.4
+        close:
+          type: number
+          description: Plain JSON number in BRL major units.
+          example: 9.45
+        quantity:
+          type: integer
+          description: Total shares traded that day.
+          example: 458200
+        volume:
+          type: number
+          description: Total financial volume traded that day, in BRL major units.
+          example: 4309490.0
+        trades:
+          type: integer
+          description: Number of trades that day.
+          example: 312
+
+    CandlesResponse:
+      type: array
+      items:
+        $ref: "#/components/schemas/Candle"
 
     BacktestResult:
       type: object
@@ -486,6 +811,8 @@ components:
         - gains
         - losses
         - winRate
+        - maxDrawdownPercentage
+        - maxDrawdownAmount
       properties:
         strategyName:
           type: string
@@ -535,6 +862,21 @@ components:
             `gains / total operations * 100`. `0` if there were no
             operations.
           example: 0
+        maxDrawdownPercentage:
+          type: number
+          description: >
+            Largest peak-to-trough decline in balance across the operations,
+            as a percentage of the peak (e.g. `15.23` for a 15.23%
+            drawdown). `0` if the balance never declined below a prior peak
+            (including when there are no operations).
+          example: 27.768000000000004
+        maxDrawdownAmount:
+          type: number
+          description: >
+            Largest peak-to-trough decline in balance across the operations,
+            in absolute currency terms (always non-negative), e.g. `2776.80`.
+            `0` under the same conditions as `maxDrawdownPercentage`.
+          example: 2776.8
         operations:
           type: array
           description: >

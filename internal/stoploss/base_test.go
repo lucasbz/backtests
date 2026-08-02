@@ -45,6 +45,20 @@ func TestLoadStopLoss_FixedAmount(t *testing.T) {
 	}
 }
 
+func TestLoadStopLoss_TotalFixedAmount(t *testing.T) {
+	sl, err := LoadStopLoss("total-fixed-amount", 500)
+	if err != nil {
+		t.Fatalf("LoadStopLoss: %v", err)
+	}
+	total, ok := sl.(*TotalFixedAmountStopLoss)
+	if !ok {
+		t.Fatalf("LoadStopLoss(%q) = %T, want *TotalFixedAmountStopLoss", "total-fixed-amount", sl)
+	}
+	if total.Amount.Amount() != 50000 {
+		t.Errorf("Amount = %d, want 50000 (R$500.00 in cents)", total.Amount.Amount())
+	}
+}
+
 func TestLoadStopLoss_Unknown(t *testing.T) {
 	if _, err := LoadStopLoss("does-not-exist", 5); err == nil {
 		t.Error("LoadStopLoss(unknown) = nil error, want an error")

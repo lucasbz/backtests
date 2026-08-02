@@ -19,18 +19,20 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: backtests <backtest|info|serve> [flags]")
+		return fmt.Errorf("usage: backtests <backtest|compare|info|serve> [flags]")
 	}
 
 	switch args[0] {
 	case "backtest":
 		return runBacktest(args[1:])
+	case "compare":
+		return runCompare(args[1:])
 	case "info":
 		return runInfo(args[1:])
 	case "serve":
 		return serve(args[1:])
 	default:
-		return fmt.Errorf("unknown command %q, want backtest, info or serve", args[0])
+		return fmt.Errorf("unknown command %q, want backtest, compare, info or serve", args[0])
 	}
 }
 

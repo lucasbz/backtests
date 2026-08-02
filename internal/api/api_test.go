@@ -12,6 +12,7 @@ import (
 
 	"github.com/lucasbz/backtests/internal/cotahist"
 	"github.com/lucasbz/backtests/internal/domain"
+	"github.com/lucasbz/backtests/internal/strategies"
 )
 
 func doRequest(t *testing.T, method, target string, body []byte) *httptest.ResponseRecorder {
@@ -113,16 +114,31 @@ func TestHandleStrategies(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
-	var names []string
-	decodeJSON(t, rec, &names)
-	found := false
-	for _, name := range names {
-		if name == "buy-and-hold" {
-			found = true
-		}
+	var infos []strategies.StrategyInfo
+	decodeJSON(t, rec, &infos)
+
+	byName := map[string]strategies.StrategyInfo{}
+	for _, info := range infos {
+		byName[info.Name] = info
 	}
-	if !found {
-		t.Errorf("strategies = %v, want it to contain %q", names, "buy-and-hold")
+
+	buyAndHold, ok := byName["buy-and-hold"]
+	if !ok {
+		t.Fatalf("strategies = %+v, want it to contain %q", infos, "buy-and-hold")
+	}
+	if buyAndHold.Params == nil || len(buyAndHold.Params) != 0 {
+		t.Errorf("buy-and-hold.Params = %+v, want an empty (non-nil) slice", buyAndHold.Params)
+	}
+
+	smaCrossover, ok := byName["sma-crossover"]
+	if !ok {
+		t.Fatalf("strategies = %+v, want it to contain %q", infos, "sma-crossover")
+	}
+	if len(smaCrossover.Params) != 2 {
+		t.Fatalf("sma-crossover.Params = %+v, want 2 entries", smaCrossover.Params)
+	}
+	if smaCrossover.Params[0].Key != "shortPeriod" || smaCrossover.Params[1].Key != "longPeriod" {
+		t.Errorf("sma-crossover.Params = %+v, want keys shortPeriod, longPeriod in order", smaCrossover.Params)
 	}
 }
 
@@ -204,6 +220,9 @@ func TestHandleBacktest_Verbose(t *testing.T) {
 	if _, ok := buyOrder["orderType"]; ok {
 		t.Errorf("buyOrder.orderType should be omitted, got %v", buyOrder["orderType"])
 	}
+	if _, ok := op["days"].(float64); !ok {
+		t.Errorf("operation.days = %v (%T), want a plain number", op["days"], op["days"])
+	}
 }
 
 func TestHandleBacktest_MissingFields(t *testing.T) {
@@ -262,6 +281,34 @@ func TestHandleBacktest_UnknownStrategy(t *testing.T) {
 	rec := doRequest(t, http.MethodPost, "/api/backtest", body)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+// TestHandleBacktest_StrategyParams asserts strategyParams is threaded
+// through to strategies.LoadStrategy: sma-crossover requires
+// shortPeriod/longPeriod (see internal/strategies/crossover.go), so
+// omitting strategyParams entirely must fail, while supplying it must
+// succeed.
+func TestHandleBacktest_StrategyParams(t *testing.T) {
+	chdirToRepoRoot(t)
+	body := []byte(`{"asset":"PETR4","start":"2015-01-02","end":"2015-12-30","strategy":"sma-crossover","balance":"10000.00","strategyParams":{"shortPeriod":5,"longPeriod":20},"verbose":true}`)
+	rec := doRequest(t, http.MethodPost, "/api/backtest", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if resp["strategyName"] != "SMA Crossover" {
+		t.Errorf("strategyName = %v, want %q", resp["strategyName"], "SMA Crossover")
+	}
+}
+
+func TestHandleBacktest_StrategyParams_MissingRequiredParam(t *testing.T) {
+	body := []byte(`{"asset":"PETR4","start":"2015-01-02","end":"2015-12-30","strategy":"sma-crossover","balance":"10000.00"}`)
+	rec := doRequest(t, http.MethodPost, "/api/backtest", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusBadRequest, rec.Body.String())
 	}
 }
 
@@ -489,5 +536,82 @@ func TestHandleBacktest_InvalidDate(t *testing.T) {
 	rec := doRequest(t, http.MethodPost, "/api/backtest", body)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandleCandles_Valid(t *testing.T) {
+	chdirToRepoRoot(t)
+	rec := doRequest(t, http.MethodGet, "/api/candles?asset=PETR4&start=2015-01-02&end=2015-01-30", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var candles []domain.Candle
+	decodeJSON(t, rec, &candles)
+	if len(candles) == 0 {
+		t.Fatal("expected at least one candle")
+	}
+	for _, c := range candles {
+		if c.Date < "2015-01-02" || c.Date > "2015-01-30" {
+			t.Errorf("candle date %q outside requested range", c.Date)
+		}
+	}
+}
+
+func TestHandleCandles_MissingParams(t *testing.T) {
+	for _, target := range []string{
+		"/api/candles",
+		"/api/candles?asset=PETR4",
+		"/api/candles?asset=PETR4&start=2015-01-02",
+		"/api/candles?start=2015-01-02&end=2015-01-30",
+	} {
+		rec := doRequest(t, http.MethodGet, target, nil)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want %d", target, rec.Code, http.StatusBadRequest)
+		}
+	}
+}
+
+// TestHandleCandles_PathTraversalAssetRejected mirrors
+// TestHandleInfo_PathTraversalAssetRejected - see that test's comment.
+func TestHandleCandles_PathTraversalAssetRejected(t *testing.T) {
+	chdirToRepoRoot(t)
+	rec := doRequest(t, http.MethodGet, "/api/candles?asset=..%2F..%2Fetc&start=2015-01-02&end=2015-01-30", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
+func TestHandleCandles_InvalidDate(t *testing.T) {
+	rec := doRequest(t, http.MethodGet, "/api/candles?asset=PETR4&start=not-a-date&end=2015-01-30", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandleCandles_EndBeforeStart(t *testing.T) {
+	rec := doRequest(t, http.MethodGet, "/api/candles?asset=PETR4&start=2015-01-30&end=2015-01-02", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+
+	var resp errorResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Error == "" {
+		t.Error("expected a non-empty error message")
+	}
+}
+
+func TestHandleCandles_NoDataReturnsEmptyArray(t *testing.T) {
+	chdirToRepoRoot(t)
+	rec := doRequest(t, http.MethodGet, "/api/candles?asset=ZZZZ9&start=2015-01-02&end=2015-01-30", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var candles []domain.Candle
+	decodeJSON(t, rec, &candles)
+	if len(candles) != 0 {
+		t.Errorf("candles = %v, want empty", candles)
 	}
 }

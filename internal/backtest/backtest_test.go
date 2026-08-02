@@ -130,6 +130,12 @@ func TestCompileResult_NoOperationsBreaksEven(t *testing.T) {
 	if result.WinRate != 0 {
 		t.Errorf("WinRate = %v, want 0", result.WinRate)
 	}
+	if result.MaxDrawdownPercentage != 0 {
+		t.Errorf("MaxDrawdownPercentage = %v, want 0 (no operations)", result.MaxDrawdownPercentage)
+	}
+	if !result.MaxDrawdownAmount.IsZero() {
+		t.Errorf("MaxDrawdownAmount = %d, want 0 (no operations)", result.MaxDrawdownAmount.Amount())
+	}
 }
 
 func TestCompileResult_ZeroStartingBalanceDoesNotPanic(t *testing.T) {
@@ -221,6 +227,115 @@ func TestCompileResult_MixedGainsAndLossesWithBreakEvenCountedAsGain(t *testing.
 	// 3 gains out of 4 operations
 	if !approxEqual(result.WinRate, 75) {
 		t.Errorf("WinRate = %v, want 75", result.WinRate)
+	}
+}
+
+// TestCompileResult_MaxDrawdown_BalanceOnlyIncreasesIsZero checks that a
+// balance that only ever climbs (a new peak after every operation) never
+// registers a drawdown.
+func TestCompileResult_MaxDrawdown_BalanceOnlyIncreasesIsZero(t *testing.T) {
+	operations := []domain.Operation{
+		{ // +1000
+			BuyOrder:  domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Buy},
+			SellOrder: domain.Order{Price: newMoney(2000), Quantity: 1, OrderType: domain.Sell},
+		},
+		{ // +500
+			BuyOrder:  domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Buy},
+			SellOrder: domain.Order{Price: newMoney(1500), Quantity: 1, OrderType: domain.Sell},
+		},
+	}
+
+	result, err := compileResult("Stub", operations, newMoney(10000))
+	if err != nil {
+		t.Fatalf("compileResult: %v", err)
+	}
+	if result.MaxDrawdownPercentage != 0 {
+		t.Errorf("MaxDrawdownPercentage = %v, want 0 (balance only ever increased)", result.MaxDrawdownPercentage)
+	}
+	if !result.MaxDrawdownAmount.IsZero() {
+		t.Errorf("MaxDrawdownAmount = %d, want 0 (balance only ever increased)", result.MaxDrawdownAmount.Amount())
+	}
+}
+
+// TestCompileResult_MaxDrawdown_PeakThenTroughThenPartialRecovery checks the
+// straightforward case: balance climbs to a peak, drops to a trough, then
+// partially recovers without setting a new peak - the drawdown should be
+// measured from the peak to the trough, not affected by the partial
+// recovery.
+func TestCompileResult_MaxDrawdown_PeakThenTroughThenPartialRecovery(t *testing.T) {
+	operations := []domain.Operation{
+		{ // +5000: 10000 -> 15000 (new peak)
+			BuyOrder:  domain.Order{Price: newMoney(10000), Quantity: 1, OrderType: domain.Buy},
+			SellOrder: domain.Order{Price: newMoney(15000), Quantity: 1, OrderType: domain.Sell},
+		},
+		{ // -3000: 15000 -> 12000 (trough)
+			BuyOrder:  domain.Order{Price: newMoney(13000), Quantity: 1, OrderType: domain.Buy},
+			SellOrder: domain.Order{Price: newMoney(10000), Quantity: 1, OrderType: domain.Sell},
+		},
+		{ // +1000: 12000 -> 13000 (partial recovery, still below the 15000 peak)
+			BuyOrder:  domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Buy},
+			SellOrder: domain.Order{Price: newMoney(2000), Quantity: 1, OrderType: domain.Sell},
+		},
+	}
+
+	result, err := compileResult("Stub", operations, newMoney(10000))
+	if err != nil {
+		t.Fatalf("compileResult: %v", err)
+	}
+	// (15000 - 12000) / 15000 * 100
+	if !approxEqual(result.MaxDrawdownPercentage, 20) {
+		t.Errorf("MaxDrawdownPercentage = %v, want 20", result.MaxDrawdownPercentage)
+	}
+	// 15000 (peak) - 12000 (trough)
+	if result.MaxDrawdownAmount.Amount() != 3000 {
+		t.Errorf("MaxDrawdownAmount = %d, want 3000", result.MaxDrawdownAmount.Amount())
+	}
+}
+
+// TestCompileResult_MaxDrawdown_PicksLargestOfSeveralDrawdowns checks that,
+// with several distinct peak/trough cycles of different sizes, the reported
+// MaxDrawdownPercentage is the largest one encountered - not the first one
+// and not the last one.
+func TestCompileResult_MaxDrawdown_PicksLargestOfSeveralDrawdowns(t *testing.T) {
+	operations := []domain.Operation{
+		{ // +5000: 10000 -> 15000 (peak)
+			BuyOrder:  domain.Order{Price: newMoney(10000), Quantity: 1, OrderType: domain.Buy},
+			SellOrder: domain.Order{Price: newMoney(15000), Quantity: 1, OrderType: domain.Sell},
+		},
+		{ // -1500: 15000 -> 13500 (first, smaller drawdown: 10%)
+			BuyOrder:  domain.Order{Price: newMoney(1500), Quantity: 1, OrderType: domain.Buy},
+			SellOrder: domain.Order{Price: newMoney(0), Quantity: 1, OrderType: domain.Sell},
+		},
+		{ // +4000: 13500 -> 17500 (new peak)
+			BuyOrder:  domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Buy},
+			SellOrder: domain.Order{Price: newMoney(5000), Quantity: 1, OrderType: domain.Sell},
+		},
+		{ // -7000: 17500 -> 10500 (largest, middle drawdown: ~40%)
+			BuyOrder:  domain.Order{Price: newMoney(7000), Quantity: 1, OrderType: domain.Buy},
+			SellOrder: domain.Order{Price: newMoney(0), Quantity: 1, OrderType: domain.Sell},
+		},
+		{ // +3000: 10500 -> 13500 (still below the 17500 peak)
+			BuyOrder:  domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Buy},
+			SellOrder: domain.Order{Price: newMoney(4000), Quantity: 1, OrderType: domain.Sell},
+		},
+		{ // -500: 13500 -> 13000 (last, smaller drawdown: ~25.7%)
+			BuyOrder:  domain.Order{Price: newMoney(500), Quantity: 1, OrderType: domain.Buy},
+			SellOrder: domain.Order{Price: newMoney(0), Quantity: 1, OrderType: domain.Sell},
+		},
+	}
+
+	result, err := compileResult("Stub", operations, newMoney(10000))
+	if err != nil {
+		t.Fatalf("compileResult: %v", err)
+	}
+	// (17500 - 10500) / 17500 * 100
+	if !approxEqual(result.MaxDrawdownPercentage, 40) {
+		t.Errorf("MaxDrawdownPercentage = %v, want 40 (the largest drawdown, not the first ~10%% or the last ~25.7%%)", result.MaxDrawdownPercentage)
+	}
+	// 17500 (peak) - 10500 (trough), the largest drawdown - not the first
+	// (1500, ~10%) or the last (500, ~25.7%)
+	if result.MaxDrawdownAmount.Amount() != 7000 {
+		t.Errorf("MaxDrawdownAmount = %d, want 7000 (the largest drawdown)", result.MaxDrawdownAmount.Amount())
 	}
 }
 

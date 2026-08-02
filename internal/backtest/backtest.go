@@ -47,6 +47,16 @@ type Result struct {
 	// WinRate is the share of operations that were gains, e.g. 66.67 for 2
 	// out of 3.
 	WinRate float64
+	// MaxDrawdownPercentage is the largest peak-to-trough decline in balance
+	// across the operations, as a percentage of the peak (e.g. 15.23 for a
+	// 15.23% drawdown). Zero if the balance never declined below a prior
+	// peak (including when there are no operations).
+	MaxDrawdownPercentage float64
+	// MaxDrawdownAmount is the largest peak-to-trough decline in balance
+	// across the operations, in absolute currency terms (always
+	// non-negative). Zero under the same conditions as
+	// MaxDrawdownPercentage.
+	MaxDrawdownAmount money.Money
 }
 
 // resultJSON mirrors Result but with money.Money fields converted to plain
@@ -54,30 +64,34 @@ type Result struct {
 // Operations marked omitempty so API callers can drop it (e.g. when the
 // caller didn't ask for verbose output) by nil-ing it out before marshaling.
 type resultJSON struct {
-	StrategyName     string             `json:"strategyName"`
-	StartingBalance  float64            `json:"startingBalance"`
-	EndingBalance    float64            `json:"endingBalance"`
-	Profit           float64            `json:"profit"`
-	ProfitPercentage float64            `json:"profitPercentage"`
-	TotalOperations  int                `json:"totalOperations"`
-	Gains            int                `json:"gains"`
-	Losses           int                `json:"losses"`
-	WinRate          float64            `json:"winRate"`
-	Operations       []domain.Operation `json:"operations,omitempty"`
+	StrategyName          string             `json:"strategyName"`
+	StartingBalance       float64            `json:"startingBalance"`
+	EndingBalance         float64            `json:"endingBalance"`
+	Profit                float64            `json:"profit"`
+	ProfitPercentage      float64            `json:"profitPercentage"`
+	TotalOperations       int                `json:"totalOperations"`
+	Gains                 int                `json:"gains"`
+	Losses                int                `json:"losses"`
+	WinRate               float64            `json:"winRate"`
+	MaxDrawdownPercentage float64            `json:"maxDrawdownPercentage"`
+	MaxDrawdownAmount     float64            `json:"maxDrawdownAmount"`
+	Operations            []domain.Operation `json:"operations,omitempty"`
 }
 
 func (r Result) MarshalJSON() ([]byte, error) {
 	return json.Marshal(resultJSON{
-		StrategyName:     r.StrategyName,
-		StartingBalance:  r.StartingBalance.AsMajorUnits(),
-		EndingBalance:    r.EndingBalance.AsMajorUnits(),
-		Profit:           r.Profit.AsMajorUnits(),
-		ProfitPercentage: r.ProfitPercentage,
-		TotalOperations:  r.TotalOperations,
-		Gains:            r.Gains,
-		Losses:           r.Losses,
-		WinRate:          r.WinRate,
-		Operations:       r.Operations,
+		StrategyName:          r.StrategyName,
+		StartingBalance:       r.StartingBalance.AsMajorUnits(),
+		EndingBalance:         r.EndingBalance.AsMajorUnits(),
+		Profit:                r.Profit.AsMajorUnits(),
+		ProfitPercentage:      r.ProfitPercentage,
+		TotalOperations:       r.TotalOperations,
+		Gains:                 r.Gains,
+		Losses:                r.Losses,
+		WinRate:               r.WinRate,
+		MaxDrawdownPercentage: r.MaxDrawdownPercentage,
+		MaxDrawdownAmount:     r.MaxDrawdownAmount.AsMajorUnits(),
+		Operations:            r.Operations,
 	})
 }
 
@@ -197,13 +211,18 @@ func pickExit(strategyExit, stopExit *domain.Order) *domain.Order {
 // compileResult turns a completed operations list into a Result, given the
 // strategy's display name and the backtest's starting balance: go over each
 // operation, adding its gain or loss to the running total profit and
-// balance, and counting it as a gain or a loss.
+// balance, counting it as a gain or a loss, and tracking the running peak
+// balance to find the largest peak-to-trough decline (MaxDrawdownPercentage
+// and MaxDrawdownAmount).
 func compileResult(strategyName string, operations []domain.Operation, startingBalance money.Money) (*Result, error) {
 	total := len(operations)
 
 	profit := money.New(0, domain.Currency)
 	balance := startingBalance
 	gains, losses := 0, 0
+	peak := startingBalance
+	maxDrawdownAmount := *money.New(0, domain.Currency)
+	var maxDrawdownPercentage float64
 	for _, op := range operations {
 		outcome, err := op.Outcome()
 		if err != nil {
@@ -231,6 +250,24 @@ func compileResult(strategyName string, operations []domain.Operation, startingB
 			return nil, fmt.Errorf("updating balance: %w", err)
 		}
 		balance = *newBalance
+
+		isNewPeak, err := balance.GreaterThan(&peak)
+		if err != nil {
+			return nil, fmt.Errorf("comparing balance to peak on %s: %w", op.Date, err)
+		}
+		if isNewPeak {
+			peak = balance
+		} else if peak.AsMajorUnits() > 0 {
+			drawdownAmount, err := peak.Subtract(&balance)
+			if err != nil {
+				return nil, fmt.Errorf("computing drawdown amount on %s: %w", op.Date, err)
+			}
+			drawdownPercentage := drawdownAmount.AsMajorUnits() / peak.AsMajorUnits() * 100
+			if drawdownPercentage > maxDrawdownPercentage {
+				maxDrawdownPercentage = drawdownPercentage
+				maxDrawdownAmount = *drawdownAmount
+			}
+		}
 	}
 
 	var profitPercentage float64
@@ -244,15 +281,17 @@ func compileResult(strategyName string, operations []domain.Operation, startingB
 	}
 
 	return &Result{
-		StrategyName:     strategyName,
-		Operations:       operations,
-		StartingBalance:  startingBalance,
-		EndingBalance:    balance,
-		Profit:           *profit,
-		TotalOperations:  total,
-		Gains:            gains,
-		Losses:           losses,
-		ProfitPercentage: profitPercentage,
-		WinRate:          winRate,
+		StrategyName:          strategyName,
+		Operations:            operations,
+		StartingBalance:       startingBalance,
+		EndingBalance:         balance,
+		Profit:                *profit,
+		TotalOperations:       total,
+		Gains:                 gains,
+		Losses:                losses,
+		ProfitPercentage:      profitPercentage,
+		WinRate:               winRate,
+		MaxDrawdownPercentage: maxDrawdownPercentage,
+		MaxDrawdownAmount:     maxDrawdownAmount,
 	}, nil
 }

@@ -41,7 +41,7 @@ func validateAsset(asset string) error {
 
 // NewHandler builds the HTTP handler for the API: GET /api/info,
 // POST /api/backtest, GET /api/strategies, GET /api/stop-losses,
-// GET /api/assets.
+// GET /api/assets, GET /api/candles.
 func NewHandler() http.Handler {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -53,6 +53,7 @@ func NewHandler() http.Handler {
 	engine.GET("/api/strategies", handleStrategies)
 	engine.GET("/api/stop-losses", handleStopLosses)
 	engine.GET("/api/assets", handleAssets)
+	engine.GET("/api/candles", handleCandles)
 
 	return engine
 }
@@ -101,7 +102,7 @@ func handleInfo(c *gin.Context) {
 }
 
 func handleStrategies(c *gin.Context) {
-	c.JSON(http.StatusOK, strategies.AvailableStrategyNamesList())
+	c.JSON(http.StatusOK, strategies.AvailableStrategyInfo())
 }
 
 // handleStopLosses lists the type names accepted by stopLoss.type on
@@ -168,13 +169,14 @@ type stopLossRequest struct {
 
 // backtestRequest is the JSON body for POST /api/backtest.
 type backtestRequest struct {
-	Asset    string           `json:"asset"`
-	Start    string           `json:"start"`
-	End      string           `json:"end"`
-	Strategy string           `json:"strategy"`
-	Balance  string           `json:"balance"`
-	Verbose  bool             `json:"verbose"`
-	StopLoss *stopLossRequest `json:"stopLoss"`
+	Asset          string             `json:"asset"`
+	Start          string             `json:"start"`
+	End            string             `json:"end"`
+	Strategy       string             `json:"strategy"`
+	Balance        string             `json:"balance"`
+	Verbose        bool               `json:"verbose"`
+	StopLoss       *stopLossRequest   `json:"stopLoss"`
+	StrategyParams map[string]float64 `json:"strategyParams"`
 }
 
 func handleBacktest(c *gin.Context) {
@@ -203,7 +205,7 @@ func handleBacktest(c *gin.Context) {
 		return
 	}
 
-	newStrategy, err := strategies.LoadStrategy(req.Strategy)
+	newStrategy, err := strategies.LoadStrategy(req.Strategy, req.StrategyParams)
 	if err != nil {
 		writeError(c, http.StatusBadRequest, err.Error())
 		return
@@ -255,4 +257,50 @@ func handleBacktest(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, result)
+}
+
+// handleCandles serves an asset's raw daily candles for the requested
+// [start, end] range, for charting (e.g. a candlestick view) - unlike
+// handleBacktest, it runs no strategy and returns no derived result, just
+// the underlying price data. domain.Candle already marshals to a
+// charting-friendly plain-decimal JSON shape (see candleJSON), so the
+// response is the []domain.Candle slice as-is.
+func handleCandles(c *gin.Context) {
+	asset := c.Query("asset")
+	start := c.Query("start")
+	end := c.Query("end")
+	if asset == "" || start == "" || end == "" {
+		writeError(c, http.StatusBadRequest, "asset, start and end are all required")
+		return
+	}
+	if err := validateAsset(asset); err != nil {
+		writeError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	startDate, err := time.Parse("2006-01-02", start)
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "parsing start: "+err.Error())
+		return
+	}
+	endDate, err := time.Parse("2006-01-02", end)
+	if err != nil {
+		writeError(c, http.StatusBadRequest, "parsing end: "+err.Error())
+		return
+	}
+	if endDate.Before(startDate) {
+		writeError(c, http.StatusBadRequest, "end must not be before start")
+		return
+	}
+
+	candles, err := cotahist.LoadCandles(asset, startDate, endDate)
+	if err != nil {
+		writeError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if candles == nil {
+		candles = []domain.Candle{}
+	}
+
+	c.JSON(http.StatusOK, candles)
 }

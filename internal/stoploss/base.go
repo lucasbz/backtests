@@ -21,8 +21,17 @@ import (
 //
 // value's meaning depends on the type:
 //   - "percent": a percentage below the entry price, e.g. 5 for 5%.
-//   - "fixed-amount": a currency amount below the entry price, in BRL
-//     major units, e.g. 2.5 for R$2.50.
+//   - "fixed-amount": a currency amount below the entry price, PER SHARE,
+//     in BRL major units, e.g. 2.5 for R$2.50 below the per-share entry
+//     price. This is not a cap on the total position's currency loss: the
+//     realized loss on the whole position when this stop-loss fires is
+//     approximately value * quantity (see FixedAmountStopLoss), so e.g. a
+//     1000-share position with value=2.5 can lose roughly R$2500, not
+//     R$2.50, when it triggers.
+//   - "total-fixed-amount": a currency amount that caps the TOTAL realized
+//     loss on the position, in BRL major units, e.g. 500 for a max R$500
+//     loss regardless of how many shares are held - contrast with
+//     fixed-amount, which is per share (see TotalFixedAmountStopLoss).
 //   - "none": unused - there's no trigger to configure, so value must be 0.
 //     This gives callers an explicit "no stop-loss" type to select, as an
 //     alternative to omitting the stop-loss configuration entirely.
@@ -43,6 +52,12 @@ var availableStopLosses = map[string]func(value float64) (domain.StopLoss, error
 			return nil, fmt.Errorf("fixed-amount stop-loss value must be greater than zero, got %v", value)
 		}
 		return &FixedAmountStopLoss{Amount: domain.MoneyFromFloat(value)}, nil
+	},
+	"total-fixed-amount": func(value float64) (domain.StopLoss, error) {
+		if value <= 0 {
+			return nil, fmt.Errorf("total-fixed-amount stop-loss value must be greater than zero, got %v", value)
+		}
+		return &TotalFixedAmountStopLoss{Amount: domain.MoneyFromFloat(value)}, nil
 	},
 	"none": func(value float64) (domain.StopLoss, error) {
 		if value != 0 {

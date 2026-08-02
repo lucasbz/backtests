@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/Rhymond/go-money"
@@ -81,5 +82,71 @@ func TestOperation_Outcome(t *testing.T) {
 				t.Errorf("Outcome() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestOperation_Days(t *testing.T) {
+	tests := []struct {
+		name string
+		buy  string
+		sell string
+		want int
+	}{
+		{"same day", "2020-01-01", "2020-01-01", 0},
+		{"multi day", "2020-01-01", "2020-01-15", 14},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			op := Operation{
+				BuyOrder:  Order{Date: tt.buy, Price: *money.New(1000, Currency), Quantity: 1, OrderType: Buy},
+				SellOrder: Order{Date: tt.sell, Price: *money.New(1000, Currency), Quantity: 1, OrderType: Sell},
+			}
+
+			got, err := op.Days()
+			if err != nil {
+				t.Fatalf("Days: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("Days() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestOperation_Days_InvalidDate(t *testing.T) {
+	op := Operation{
+		BuyOrder:  Order{Date: "not-a-date", Price: *money.New(1000, Currency), Quantity: 1, OrderType: Buy},
+		SellOrder: Order{Date: "2020-01-15", Price: *money.New(1000, Currency), Quantity: 1, OrderType: Sell},
+	}
+
+	if _, err := op.Days(); err == nil {
+		t.Fatal("Days() error = nil, want an error for an unparseable buy date")
+	}
+}
+
+func TestOperation_MarshalJSON_IncludesDays(t *testing.T) {
+	op := Operation{
+		Date:      "2020-01-01",
+		BuyOrder:  Order{Date: "2020-01-01", Price: *money.New(1000, Currency), Quantity: 10, OrderType: Buy},
+		SellOrder: Order{Date: "2020-01-15", Price: *money.New(1500, Currency), Quantity: 10, OrderType: Sell},
+	}
+
+	data, err := json.Marshal(op)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	days, ok := got["days"].(float64)
+	if !ok {
+		t.Fatalf("days field missing or not a number, got %v", got["days"])
+	}
+	if int(days) != 14 {
+		t.Errorf("days = %v, want 14", days)
 	}
 }
