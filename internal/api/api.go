@@ -15,6 +15,7 @@ import (
 	"github.com/lucasbz/backtests/internal/backtest"
 	"github.com/lucasbz/backtests/internal/cotahist"
 	"github.com/lucasbz/backtests/internal/domain"
+	"github.com/lucasbz/backtests/internal/indicators"
 	"github.com/lucasbz/backtests/internal/stoploss"
 	"github.com/lucasbz/backtests/internal/strategies"
 )
@@ -41,7 +42,8 @@ func validateAsset(asset string) error {
 
 // NewHandler builds the HTTP handler for the API: GET /api/info,
 // POST /api/backtest, GET /api/strategies, GET /api/stop-losses,
-// GET /api/assets, GET /api/candles.
+// GET /api/assets, GET /api/candles, GET /api/indicators/sma,
+// GET /api/indicators/ema.
 func NewHandler() http.Handler {
 	gin.SetMode(gin.ReleaseMode)
 
@@ -54,6 +56,8 @@ func NewHandler() http.Handler {
 	engine.GET("/api/stop-losses", handleStopLosses)
 	engine.GET("/api/assets", handleAssets)
 	engine.GET("/api/candles", handleCandles)
+	engine.GET("/api/indicators/sma", handleIndicator("sma"))
+	engine.GET("/api/indicators/ema", handleIndicator("ema"))
 
 	return engine
 }
@@ -303,4 +307,97 @@ func handleCandles(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, candles)
+}
+
+// indicatorPoint is the JSON shape of one element in the array returned by
+// GET /api/indicators/sma and GET /api/indicators/ema.
+type indicatorPoint struct {
+	Date  string  `json:"date"`
+	Value float64 `json:"value"`
+}
+
+// handleIndicator builds a handler for GET /api/indicators/{indicatorType}
+// (indicatorType is "sma" or "ema" - see NewHandler's route registrations),
+// serving a bare JSON array of {date, value} points computed by running
+// indicators.LoadIndicator(indicatorType, ...) forward over the asset's
+// candles in the requested [start, end] range - separate from, and much
+// simpler than, the backtest/strategy machinery in handleBacktest: no
+// decisions, no positions, just the indicator's raw values for charting.
+//
+// asset/start/end validation mirrors handleCandles exactly. The warm-up
+// prefix (candles seen before the indicator has enough history to produce
+// a value, e.g. the first Period-1 candles of an SMA) is simply omitted
+// from the response, not sent as null/0 - see indicators.Indicator.Value's
+// ready bool.
+func handleIndicator(indicatorType string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		asset := c.Query("asset")
+		start := c.Query("start")
+		end := c.Query("end")
+		periodRaw := c.Query("period")
+		if asset == "" || start == "" || end == "" || periodRaw == "" {
+			writeError(c, http.StatusBadRequest, "asset, start, end and period are all required")
+			return
+		}
+		if err := validateAsset(asset); err != nil {
+			writeError(c, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		startDate, err := time.Parse("2006-01-02", start)
+		if err != nil {
+			writeError(c, http.StatusBadRequest, "parsing start: "+err.Error())
+			return
+		}
+		endDate, err := time.Parse("2006-01-02", end)
+		if err != nil {
+			writeError(c, http.StatusBadRequest, "parsing end: "+err.Error())
+			return
+		}
+		if endDate.Before(startDate) {
+			writeError(c, http.StatusBadRequest, "end must not be before start")
+			return
+		}
+
+		period, err := strconv.Atoi(periodRaw)
+		if err != nil {
+			writeError(c, http.StatusBadRequest, "period must be a valid integer")
+			return
+		}
+		if period <= 0 {
+			writeError(c, http.StatusBadRequest, "period must be a positive integer")
+			return
+		}
+
+		candles, err := cotahist.LoadCandles(asset, startDate, endDate)
+		if err != nil {
+			writeError(c, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		// Can't actually fail here given the validation above (period is a
+		// positive integer, indicatorType is always "sma" or "ema" - both
+		// registered in internal/indicators), but LoadIndicator can fail in
+		// general (unknown type, invalid params), so handle it for
+		// robustness/symmetry with its contract rather than assuming.
+		ind, err := indicators.LoadIndicator(indicatorType, map[string]float64{"period": float64(period)})
+		if err != nil {
+			writeError(c, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		// candles is already sorted chronologically by LoadCandles; walk it
+		// in order, updating the indicator before reading Value() (same
+		// "update-then-read" ordering strategies.crossoverStrategy.Decide
+		// uses), collecting a point for every candle where it's ready.
+		points := []indicatorPoint{}
+		for _, candle := range candles {
+			ind.Update(candle)
+			if value, ready := ind.Value(); ready {
+				points = append(points, indicatorPoint{Date: candle.Date, Value: value})
+			}
+		}
+
+		c.JSON(http.StatusOK, points)
+	}
 }

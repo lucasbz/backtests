@@ -24,6 +24,10 @@ import (
 //     "longPeriod" (see newCrossoverStrategy).
 //   - "rsi-threshold" expects "period", "oversold" and "overbought" (see
 //     newRSIThreshold).
+//   - "ema-trend-breakout" expects "shortPeriod" and "longPeriod", same
+//     keys/meaning as the crossover strategies (see newEMATrendBreakout):
+//     it's TwoCandleBreakout's buy/sell trigger with an EMA uptrend filter
+//     ANDed onto the buy side only.
 var availableStrategies = map[string]func(params map[string]float64) (domain.Strategy, error){
 	"buy-and-hold": func(params map[string]float64) (domain.Strategy, error) {
 		return &BuyAndHold{}, nil
@@ -39,6 +43,9 @@ var availableStrategies = map[string]func(params map[string]float64) (domain.Str
 	},
 	"rsi-threshold": func(params map[string]float64) (domain.Strategy, error) {
 		return newRSIThreshold(params)
+	},
+	"ema-trend-breakout": func(params map[string]float64) (domain.Strategy, error) {
+		return newEMATrendBreakout(params)
 	},
 }
 
@@ -85,7 +92,9 @@ func ptr(f float64) *float64 {
 // cleanly from reflection, and every other registry in this codebase -
 // stoploss, indicators - is similarly hand-documented rather than
 // introspected). Strategies with no entry here (buy-and-hold,
-// two-candle-breakout) take zero params.
+// two-candle-breakout) take zero params. "ema-trend-breakout" reuses the
+// same "shortPeriod"/"longPeriod" keys and defaults' shape as the crossover
+// strategies, just with its own defaults (8/80).
 var strategyParams = map[string][]StrategyParam{
 	"sma-crossover": {
 		{Key: "shortPeriod", Label: "Short period", Default: 10, Min: 1, Step: 1},
@@ -99,6 +108,10 @@ var strategyParams = map[string][]StrategyParam{
 		{Key: "period", Label: "RSI period", Default: 14, Min: 2, Step: 1},
 		{Key: "oversold", Label: "Oversold threshold", Default: 30, Min: 0, Max: ptr(100), Step: 1},
 		{Key: "overbought", Label: "Overbought threshold", Default: 70, Min: 0, Max: ptr(100), Step: 1},
+	},
+	"ema-trend-breakout": {
+		{Key: "shortPeriod", Label: "Short period", Default: 8, Min: 1, Step: 1},
+		{Key: "longPeriod", Label: "Long period", Default: 80, Min: 2, Step: 1},
 	},
 }
 

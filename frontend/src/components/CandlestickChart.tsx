@@ -1,19 +1,25 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   CandlestickSeries,
   ColorType,
   HistogramSeries,
+  LineSeries,
   createChart,
   type IChartApi,
   type ISeriesApi,
 } from 'lightweight-charts';
 import { useCandles } from '../hooks/useCandles';
-import { errorBoxClasses } from '../styles/ui';
+import { useIndicators, type IndicatorSelection } from '../hooks/useIndicators';
+import { chipClasses, errorBoxClasses } from '../styles/ui';
 
 export interface CandlestickChartProps {
   asset: string;
   start?: string;
   end?: string;
+  // Indicator overlays (EMA/SMA) to show on top of the candles, in addition
+  // to whatever the picker below the chart has toggled on. Defaults to none
+  // - omitting this renders exactly as before this prop existed.
+  indicators?: IndicatorSelection[];
 }
 
 // `lightweight-charts` draws to a canvas, so it can't consume Tailwind
@@ -27,18 +33,60 @@ const CHART_COLORS = {
   loss: '#f87171',
 };
 
+// Colors for indicator overlay lines, deliberately distinct from
+// `CHART_COLORS.gain`/`.loss` above - those specifically mean gain/loss
+// elsewhere in the app, so an overlay line must never share a hue with
+// them. Cycled by position in the current selection.
+const INDICATOR_LINE_COLORS = ['#60a5fa', '#fbbf24', '#c084fc'];
+
+// Fixed preset list the picker below the chart offers - chosen to line up
+// with values already meaningful elsewhere in this app (`ema-trend-
+// breakout`'s default period, `sma-crossover`'s default period).
+const INDICATOR_PRESETS: { label: string; selection: IndicatorSelection }[] = [
+  { label: 'EMA 8', selection: { type: 'ema', period: 8 } },
+  { label: 'EMA 80', selection: { type: 'ema', period: 80 } },
+  { label: 'SMA 20', selection: { type: 'sma', period: 20 } },
+];
+
+function indicatorKey(selection: IndicatorSelection): string {
+  return `${selection.type}:${selection.period}`;
+}
+
 /**
  * Renders a candlestick chart (with a volume histogram beneath it) for
- * `asset` over `[start, end]`, via `useCandles`. Mirrors `AssetInfoPanel`'s
- * loading/error handling; if `start`/`end` aren't available yet (e.g. the
- * asset's info hasn't loaded), nothing is fetched or rendered.
+ * `asset` over `[start, end]`, via `useCandles`, plus optional EMA/SMA
+ * overlay lines (via `useIndicators`) toggled through the preset chip
+ * picker rendered above it. Mirrors `AssetInfoPanel`'s loading/error
+ * handling; if `start`/`end` aren't available yet (e.g. the asset's info
+ * hasn't loaded), nothing is fetched or rendered.
  */
-export function CandlestickChart({ asset, start, end }: CandlestickChartProps) {
+export function CandlestickChart({ asset, start, end, indicators = [] }: CandlestickChartProps) {
   const { candles, loading, error } = useCandles(asset, start, end);
+
+  const [selectedIndicators, setSelectedIndicators] = useState<IndicatorSelection[]>(indicators);
+  const { series: indicatorSeries } = useIndicators(asset, start, end, selectedIndicators);
+
+  const toggleIndicator = useCallback((selection: IndicatorSelection) => {
+    setSelectedIndicators((current) => {
+      const key = indicatorKey(selection);
+      const isActive = current.some((entry) => indicatorKey(entry) === key);
+      return isActive
+        ? current.filter((entry) => indicatorKey(entry) !== key)
+        : [...current, selection];
+    });
+  }, []);
 
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
+  const lineSeriesRef = useRef<Map<string, ISeriesApi<'Line'>>>(new Map());
+
+  // Bumped every time the container callback below (re)creates the chart,
+  // so the line-series reconciliation effect further down - which otherwise
+  // only depends on the indicator selection - also re-runs after a chart
+  // recreation (e.g. `start`/`end` going missing then present again), when
+  // `chartRef.current` is a fresh chart with no line series on it yet.
+  const [chartMountTick, setChartMountTick] = useState(0);
 
   // A ref callback (rather than `useRef` + a mount-only `useEffect`) so the
   // chart is (re)created whenever the container div itself mounts/unmounts -
@@ -50,6 +98,7 @@ export function CandlestickChart({ asset, start, end }: CandlestickChartProps) {
       chartRef.current = null;
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
+      lineSeriesRef.current.clear();
     }
 
     if (!node) return;
@@ -88,6 +137,7 @@ export function CandlestickChart({ asset, start, end }: CandlestickChartProps) {
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
+    setChartMountTick((tick) => tick + 1);
   }, []);
 
   useEffect(() => {
@@ -112,12 +162,79 @@ export function CandlestickChart({ asset, start, end }: CandlestickChartProps) {
     );
   }, [candles]);
 
+  // Reconciles the line series actually on the chart against
+  // `selectedIndicators`: removes ones no longer selected, creates ones
+  // newly selected. Runs whenever the selection changes, or the chart
+  // itself was just (re)created (`chartMountTick`) - `chartRef.current` may
+  // still be null the very first time this runs (e.g. `start`/`end` aren't
+  // available yet, so the container - and thus the chart - doesn't exist).
+  const selectionKey = selectedIndicators.map(indicatorKey).join(',');
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+
+    const selectedKeys = new Set(selectedIndicators.map(indicatorKey));
+
+    for (const [key, lineSeries] of lineSeriesRef.current) {
+      if (!selectedKeys.has(key)) {
+        chart.removeSeries(lineSeries);
+        lineSeriesRef.current.delete(key);
+      }
+    }
+
+    selectedIndicators.forEach((selection, index) => {
+      const key = indicatorKey(selection);
+      if (lineSeriesRef.current.has(key)) return;
+
+      const lineSeries = chart.addSeries(LineSeries, {
+        color: INDICATOR_LINE_COLORS[index % INDICATOR_LINE_COLORS.length],
+        lineWidth: 2,
+        title: `${selection.type.toUpperCase()} ${selection.period}`,
+      });
+      lineSeriesRef.current.set(key, lineSeries);
+    });
+    // `selectedIndicators` is intentionally represented by `selectionKey`
+    // here (see above) rather than listed directly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartMountTick, selectionKey]);
+
+  // Populates each line series' data once it's been created above and its
+  // points have arrived from `useIndicators` - the "setData on data change"
+  // half of the same two-step split the candle/volume series use.
+  useEffect(() => {
+    indicatorSeries.forEach((entry) => {
+      const lineSeries = lineSeriesRef.current.get(indicatorKey(entry));
+      if (!lineSeries) return;
+
+      lineSeries.setData(entry.points.map((point) => ({ time: point.date, value: point.value })));
+    });
+  }, [indicatorSeries]);
+
   if (!start || !end) {
     return null;
   }
 
   return (
     <section className="text-left">
+      <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Indicators">
+        {INDICATOR_PRESETS.map(({ label, selection }) => {
+          const active = selectedIndicators.some(
+            (entry) => indicatorKey(entry) === indicatorKey(selection),
+          );
+          return (
+            <button
+              key={label}
+              type="button"
+              className={chipClasses(active)}
+              aria-pressed={active}
+              onClick={() => toggleIndicator(selection)}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
       {loading && <p className="text-sm text-text">Loading chart…</p>}
 
       {error && (

@@ -12,7 +12,7 @@ import (
 func TestAvailableStrategyNamesList(t *testing.T) {
 	names := AvailableStrategyNamesList()
 
-	want := []string{"buy-and-hold", "ema-crossover", "rsi-threshold", "sma-crossover", "two-candle-breakout"}
+	want := []string{"buy-and-hold", "ema-crossover", "ema-trend-breakout", "rsi-threshold", "sma-crossover", "two-candle-breakout"}
 	if len(names) != len(want) {
 		t.Fatalf("AvailableStrategyNamesList() = %v, want %v", names, want)
 	}
@@ -69,6 +69,7 @@ func TestLoadStrategy_KnownNames(t *testing.T) {
 		{"sma-crossover", map[string]float64{"shortPeriod": 2, "longPeriod": 5}, "SMA Crossover"},
 		{"ema-crossover", map[string]float64{"shortPeriod": 2, "longPeriod": 5}, "EMA Crossover"},
 		{"rsi-threshold", map[string]float64{"period": 14, "oversold": 30, "overbought": 70}, "RSI Threshold"},
+		{"ema-trend-breakout", map[string]float64{"shortPeriod": 8, "longPeriod": 80}, "EMA Trend Breakout"},
 	}
 
 	for _, tc := range cases {

@@ -192,3 +192,27 @@ export function getCandles(asset: string, start: string, end: string): Promise<C
   const params = new URLSearchParams({ asset, start, end });
   return request<Candle[]>(`/candles?${params.toString()}`);
 }
+
+// -- GET /api/indicators/{sma,ema} ------------------------------------------
+
+export interface IndicatorPoint {
+  date: string; // YYYY-MM-DD
+  value: number;
+}
+
+/**
+ * Fetches a single indicator series (`type`, `period`) for `asset` over
+ * `[start, end]`. Only covers dates where the indicator has warmed up - the
+ * response may start partway through the requested range, with no
+ * null/placeholder entries for the warm-up prefix.
+ */
+export function getIndicator(
+  type: 'sma' | 'ema',
+  asset: string,
+  start: string,
+  end: string,
+  period: number,
+): Promise<IndicatorPoint[]> {
+  const params = new URLSearchParams({ asset, start, end, period: String(period) });
+  return request<IndicatorPoint[]>(`/indicators/${type}?${params.toString()}`);
+}

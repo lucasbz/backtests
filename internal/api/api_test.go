@@ -615,3 +615,123 @@ func TestHandleCandles_NoDataReturnsEmptyArray(t *testing.T) {
 		t.Errorf("candles = %v, want empty", candles)
 	}
 }
+
+// indicatorRoutes are the two routes handleIndicator backs - both share
+// identical validation/loading behavior (see handleIndicator's doc
+// comment), so every TestHandleIndicator_* test below runs against both.
+var indicatorRoutes = []string{"/api/indicators/sma", "/api/indicators/ema"}
+
+func TestHandleIndicator_Valid(t *testing.T) {
+	chdirToRepoRoot(t)
+	for _, route := range indicatorRoutes {
+		t.Run(route, func(t *testing.T) {
+			target := route + "?asset=PETR4&start=2015-01-02&end=2015-06-30&period=20"
+			rec := doRequest(t, http.MethodGet, target, nil)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+			}
+
+			var points []indicatorPoint
+			decodeJSON(t, rec, &points)
+			if len(points) == 0 {
+				t.Fatal("expected at least one point")
+			}
+			for _, p := range points {
+				if p.Date < "2015-01-02" || p.Date > "2015-06-30" {
+					t.Errorf("point date %q outside requested range", p.Date)
+				}
+			}
+			// period=20 over a ~6-month range guarantees a multi-candle
+			// warm-up prefix was skipped: the first ready point can't be
+			// the very first day of the range.
+			if points[0].Date == "2015-01-02" {
+				t.Errorf("first point date = %q, want warm-up prefix skipped (not equal to start)", points[0].Date)
+			}
+		})
+	}
+}
+
+func TestHandleIndicator_MissingParams(t *testing.T) {
+	for _, route := range indicatorRoutes {
+		for _, target := range []string{
+			route,
+			route + "?asset=PETR4",
+			route + "?asset=PETR4&start=2015-01-02",
+			route + "?asset=PETR4&start=2015-01-02&end=2015-06-30",
+			route + "?start=2015-01-02&end=2015-06-30&period=20",
+		} {
+			rec := doRequest(t, http.MethodGet, target, nil)
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("%s: status = %d, want %d", target, rec.Code, http.StatusBadRequest)
+			}
+		}
+	}
+}
+
+func TestHandleIndicator_InvalidPeriod(t *testing.T) {
+	for _, route := range indicatorRoutes {
+		for _, period := range []string{"not-a-number", "0", "-5", "3.5"} {
+			target := route + "?asset=PETR4&start=2015-01-02&end=2015-06-30&period=" + period
+			rec := doRequest(t, http.MethodGet, target, nil)
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("%s: status = %d, want %d", target, rec.Code, http.StatusBadRequest)
+			}
+		}
+	}
+}
+
+// TestHandleIndicator_PathTraversalAssetRejected mirrors
+// TestHandleCandles_PathTraversalAssetRejected - see that test's comment.
+func TestHandleIndicator_PathTraversalAssetRejected(t *testing.T) {
+	chdirToRepoRoot(t)
+	for _, route := range indicatorRoutes {
+		target := route + "?asset=..%2F..%2Fetc&start=2015-01-02&end=2015-06-30&period=20"
+		rec := doRequest(t, http.MethodGet, target, nil)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s: status = %d, want %d, body = %s", route, rec.Code, http.StatusBadRequest, rec.Body.String())
+		}
+	}
+}
+
+func TestHandleIndicator_InvalidDate(t *testing.T) {
+	for _, route := range indicatorRoutes {
+		target := route + "?asset=PETR4&start=not-a-date&end=2015-06-30&period=20"
+		rec := doRequest(t, http.MethodGet, target, nil)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want %d", route, rec.Code, http.StatusBadRequest)
+		}
+	}
+}
+
+func TestHandleIndicator_EndBeforeStart(t *testing.T) {
+	for _, route := range indicatorRoutes {
+		target := route + "?asset=PETR4&start=2015-06-30&end=2015-01-02&period=20"
+		rec := doRequest(t, http.MethodGet, target, nil)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s: status = %d, want %d", route, rec.Code, http.StatusBadRequest)
+		}
+
+		var resp errorResponse
+		decodeJSON(t, rec, &resp)
+		if resp.Error == "" {
+			t.Errorf("%s: expected a non-empty error message", route)
+		}
+	}
+}
+
+func TestHandleIndicator_NoDataReturnsEmptyArray(t *testing.T) {
+	chdirToRepoRoot(t)
+	for _, route := range indicatorRoutes {
+		target := route + "?asset=ZZZZ9&start=2015-01-02&end=2015-06-30&period=20"
+		rec := doRequest(t, http.MethodGet, target, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status = %d, want %d, body = %s", route, rec.Code, http.StatusOK, rec.Body.String())
+		}
+
+		var points []indicatorPoint
+		decodeJSON(t, rec, &points)
+		if len(points) != 0 {
+			t.Errorf("%s: points = %v, want empty", route, points)
+		}
+	}
+}

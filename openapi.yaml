@@ -195,6 +195,18 @@ paths:
                       default: 26
                       min: 2
                       step: 1
+                - name: ema-trend-breakout
+                  params:
+                    - key: shortPeriod
+                      label: Short period
+                      default: 8
+                      min: 1
+                      step: 1
+                    - key: longPeriod
+                      label: Long period
+                      default: 80
+                      min: 2
+                      step: 1
                 - name: rsi-threshold
                   params:
                     - key: period
@@ -465,6 +477,195 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/indicators/sma:
+    get:
+      operationId: getIndicatorSma
+      summary: >
+        Raw Simple Moving Average time series for an asset over an inclusive
+        date range, for charting as an overlay on `GET /api/candles`. Runs
+        no strategy and returns no derived decision - just the indicator's
+        values, computed by the exact same code
+        (`internal/indicators.LoadIndicator("sma", ...)`) the
+        `sma-crossover` strategy uses.
+      parameters:
+        - name: asset
+          in: query
+          required: true
+          description: >
+            Ticker of the asset to look up, e.g. `PETR4`. Must match
+            `^[A-Z0-9]+$` (uppercase letters and digits only).
+          schema:
+            type: string
+            pattern: "^[A-Z0-9]+$"
+        - name: start
+          in: query
+          required: true
+          description: Inclusive start date, `YYYY-MM-DD`.
+          schema:
+            type: string
+            format: date
+          example: "2015-01-02"
+        - name: end
+          in: query
+          required: true
+          description: Inclusive end date, `YYYY-MM-DD`. Must not be before `start`.
+          schema:
+            type: string
+            format: date
+          example: "2015-12-30"
+        - name: period
+          in: query
+          required: true
+          description: >
+            Number of candles the moving average is computed over, e.g. `20`.
+            Must be a positive whole number.
+          schema:
+            type: integer
+            minimum: 1
+          example: 20
+      responses:
+        "200":
+          description: >
+            The indicator's values in the requested range, sorted by date
+            ascending, `[]` (not `null`) when there's no data. Only includes
+            dates where the indicator has enough history to be ready - the
+            warm-up prefix (the first `period - 1` candles) is simply
+            omitted, never sent as `null`/`0`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IndicatorResponse"
+              example:
+                - date: "2015-01-30"
+                  value: 32.51
+                - date: "2015-02-02"
+                  value: 32.64
+        "400":
+          description: >
+            Missing/empty `asset`/`start`/`end`/`period` query param, `asset`
+            doesn't match `^[A-Z0-9]+$`, unparseable `start`/`end`, `end`
+            before `start`, or `period` missing/non-integer/non-positive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missing:
+                  value:
+                    error: "asset, start, end and period are all required"
+                invalidAsset:
+                  value:
+                    error: 'asset must match ^[A-Z0-9]+$ (uppercase letters and digits only), got "../../etc"'
+                invalidDate:
+                  value:
+                    error: "parsing start: parsing time \"not-a-date\" as \"2006-01-02\": ..."
+                endBeforeStart:
+                  value:
+                    error: "end must not be before start"
+                invalidPeriod:
+                  value:
+                    error: "period must be a positive integer"
+        "500":
+          description: Unexpected server-side failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/indicators/ema:
+    get:
+      operationId: getIndicatorEma
+      summary: >
+        Raw Exponential Moving Average time series for an asset over an
+        inclusive date range, for charting as an overlay on
+        `GET /api/candles`. Identical contract to `GET /api/indicators/sma`
+        above (same params, same response shape, same warm-up-prefix-omitted
+        behavior) - only the underlying indicator math differs.
+      parameters:
+        - name: asset
+          in: query
+          required: true
+          description: >
+            Ticker of the asset to look up, e.g. `PETR4`. Must match
+            `^[A-Z0-9]+$` (uppercase letters and digits only).
+          schema:
+            type: string
+            pattern: "^[A-Z0-9]+$"
+        - name: start
+          in: query
+          required: true
+          description: Inclusive start date, `YYYY-MM-DD`.
+          schema:
+            type: string
+            format: date
+          example: "2015-01-02"
+        - name: end
+          in: query
+          required: true
+          description: Inclusive end date, `YYYY-MM-DD`. Must not be before `start`.
+          schema:
+            type: string
+            format: date
+          example: "2015-12-30"
+        - name: period
+          in: query
+          required: true
+          description: >
+            Number of candles the moving average is computed over, e.g. `8`.
+            Must be a positive whole number.
+          schema:
+            type: integer
+            minimum: 1
+          example: 8
+      responses:
+        "200":
+          description: >
+            The indicator's values in the requested range, sorted by date
+            ascending, `[]` (not `null`) when there's no data. Only includes
+            dates where the indicator has enough history to be ready - the
+            warm-up prefix (the first `period - 1` candles) is simply
+            omitted, never sent as `null`/`0`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IndicatorResponse"
+              example:
+                - date: "2015-01-13"
+                  value: 32.51
+                - date: "2015-01-14"
+                  value: 32.64
+        "400":
+          description: >
+            Missing/empty `asset`/`start`/`end`/`period` query param, `asset`
+            doesn't match `^[A-Z0-9]+$`, unparseable `start`/`end`, `end`
+            before `start`, or `period` missing/non-integer/non-positive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                missing:
+                  value:
+                    error: "asset, start, end and period are all required"
+                invalidAsset:
+                  value:
+                    error: 'asset must match ^[A-Z0-9]+$ (uppercase letters and digits only), got "../../etc"'
+                invalidDate:
+                  value:
+                    error: "parsing start: parsing time \"not-a-date\" as \"2006-01-02\": ..."
+                endBeforeStart:
+                  value:
+                    error: "end must not be before start"
+                invalidPeriod:
+                  value:
+                    error: "period must be a positive integer"
+        "500":
+          description: Unexpected server-side failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   schemas:
     Error:
@@ -651,6 +852,18 @@ components:
                 crosses above `overbought` - both at that candle's closing
                 price. Produces no signal until RSI has `period`+1 candles
                 behind it.
+              - `ema-trend-breakout`: `shortPeriod` and `longPeriod`, same
+                keys/rule as `sma-crossover`/`ema-crossover` (both required,
+                `shortPeriod` strictly less than `longPeriod`). It's
+                `two-candle-breakout`'s buy/sell trigger (buys, while flat,
+                at the min of the previous two candles' lows once the
+                current candle's low reaches it; sells, while holding, at
+                the max of the previous two candles' highs once the current
+                candle's high reaches it), with one extra condition ANDed
+                onto the buy side only: both EMAs must be ready, the short
+                EMA must be above the long EMA (uptrend), and the current
+                candle's close must be above the short EMA. The sell side is
+                unaffected by the EMAs.
           example: { shortPeriod: 5, longPeriod: 20 }
 
     StopLossRequest:
@@ -798,6 +1011,28 @@ components:
       type: array
       items:
         $ref: "#/components/schemas/Candle"
+
+    IndicatorPoint:
+      type: object
+      description: >
+        One point in the array returned by `GET /api/indicators/sma` /
+        `GET /api/indicators/ema`. Which indicator/period it's for is not
+        repeated here - the caller already knows, since it picked the URL
+        and the `period` query param.
+      required: [date, value]
+      properties:
+        date:
+          type: string
+          format: date
+          example: "2015-01-30"
+        value:
+          type: number
+          example: 32.51
+
+    IndicatorResponse:
+      type: array
+      items:
+        $ref: "#/components/schemas/IndicatorPoint"
 
     BacktestResult:
       type: object
