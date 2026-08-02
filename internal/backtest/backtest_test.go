@@ -58,7 +58,7 @@ func (s *stubStopLoss) Check(candle domain.Candle, position domain.Position) *do
 	return s.check(candle, position)
 }
 
-func TestNewResult_ProfitAndEndingBalance(t *testing.T) {
+func TestNewBacktestResult_ProfitAndEndingBalance(t *testing.T) {
 	operations := []domain.Operation{
 		{
 			Date:      "2010-01-04",
@@ -67,9 +67,9 @@ func TestNewResult_ProfitAndEndingBalance(t *testing.T) {
 		},
 	}
 
-	result, err := NewResult("Stub", operations, newMoney(5000))
+	result, err := NewBacktestResult("Stub", operations, newMoney(5000))
 	if err != nil {
-		t.Fatalf("NewResult: %v", err)
+		t.Fatalf("NewBacktestResult: %v", err)
 	}
 
 	if result.StrategyName != "Stub" {
@@ -103,10 +103,10 @@ func TestNewResult_ProfitAndEndingBalance(t *testing.T) {
 	}
 }
 
-func TestNewResult_NoOperationsBreaksEven(t *testing.T) {
-	result, err := NewResult("Stub", nil, newMoney(5000))
+func TestNewBacktestResult_NoOperationsBreaksEven(t *testing.T) {
+	result, err := NewBacktestResult("Stub", nil, newMoney(5000))
 	if err != nil {
-		t.Fatalf("NewResult: %v", err)
+		t.Fatalf("NewBacktestResult: %v", err)
 	}
 
 	if len(result.Operations) != 0 {
@@ -139,7 +139,7 @@ func TestNewResult_NoOperationsBreaksEven(t *testing.T) {
 	}
 }
 
-func TestNewResult_ZeroStartingBalanceDoesNotPanic(t *testing.T) {
+func TestNewBacktestResult_ZeroStartingBalanceDoesNotPanic(t *testing.T) {
 	operations := []domain.Operation{
 		{
 			BuyOrder:  domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Buy},
@@ -147,16 +147,16 @@ func TestNewResult_ZeroStartingBalanceDoesNotPanic(t *testing.T) {
 		},
 	}
 
-	result, err := NewResult("Stub", operations, newMoney(0))
+	result, err := NewBacktestResult("Stub", operations, newMoney(0))
 	if err != nil {
-		t.Fatalf("NewResult: %v", err)
+		t.Fatalf("NewBacktestResult: %v", err)
 	}
 	if result.ProfitPercentage() != 0 {
 		t.Errorf("ProfitPercentage = %v, want 0 (zero starting balance)", result.ProfitPercentage())
 	}
 }
 
-func TestNewResult_Loss(t *testing.T) {
+func TestNewBacktestResult_Loss(t *testing.T) {
 	operations := []domain.Operation{
 		{
 			BuyOrder:  domain.Order{Price: newMoney(2000), Quantity: 5, OrderType: domain.Buy},
@@ -164,9 +164,9 @@ func TestNewResult_Loss(t *testing.T) {
 		},
 	}
 
-	result, err := NewResult("Stub", operations, newMoney(10000))
+	result, err := NewBacktestResult("Stub", operations, newMoney(10000))
 	if err != nil {
-		t.Fatalf("NewResult: %v", err)
+		t.Fatalf("NewBacktestResult: %v", err)
 	}
 
 	// bought 5 @ 2000 = 10000, sold 5 @ 1000 = 5000, profit = -5000
@@ -191,7 +191,7 @@ func TestNewResult_Loss(t *testing.T) {
 	}
 }
 
-func TestNewResult_MixedGainsAndLossesWithBreakEvenCountedAsGain(t *testing.T) {
+func TestNewBacktestResult_MixedGainsAndLossesWithBreakEvenCountedAsGain(t *testing.T) {
 	operations := []domain.Operation{
 		{ // gain: +1000
 			BuyOrder:  domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Buy},
@@ -211,9 +211,9 @@ func TestNewResult_MixedGainsAndLossesWithBreakEvenCountedAsGain(t *testing.T) {
 		},
 	}
 
-	result, err := NewResult("Stub", operations, newMoney(10000))
+	result, err := NewBacktestResult("Stub", operations, newMoney(10000))
 	if err != nil {
-		t.Fatalf("NewResult: %v", err)
+		t.Fatalf("NewBacktestResult: %v", err)
 	}
 
 	if result.TotalOperations != 4 {
@@ -234,7 +234,7 @@ func TestNewResult_MixedGainsAndLossesWithBreakEvenCountedAsGain(t *testing.T) {
 // TestCompileResult_MaxDrawdown_BalanceOnlyIncreasesIsZero checks that a
 // balance that only ever climbs (a new peak after every operation) never
 // registers a drawdown.
-func TestNewResult_MaxDrawdown_BalanceOnlyIncreasesIsZero(t *testing.T) {
+func TestNewBacktestResult_MaxDrawdown_BalanceOnlyIncreasesIsZero(t *testing.T) {
 	operations := []domain.Operation{
 		{ // +1000
 			BuyOrder:  domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Buy},
@@ -246,9 +246,9 @@ func TestNewResult_MaxDrawdown_BalanceOnlyIncreasesIsZero(t *testing.T) {
 		},
 	}
 
-	result, err := NewResult("Stub", operations, newMoney(10000))
+	result, err := NewBacktestResult("Stub", operations, newMoney(10000))
 	if err != nil {
-		t.Fatalf("NewResult: %v", err)
+		t.Fatalf("NewBacktestResult: %v", err)
 	}
 	if result.MaxDrawdownPercentage() != 0 {
 		t.Errorf("MaxDrawdownPercentage = %v, want 0 (balance only ever increased)", result.MaxDrawdownPercentage())
@@ -264,7 +264,7 @@ func TestNewResult_MaxDrawdown_BalanceOnlyIncreasesIsZero(t *testing.T) {
 // partially recovers without setting a new peak - the drawdown should be
 // measured from the peak to the trough, not affected by the partial
 // recovery.
-func TestNewResult_MaxDrawdown_PeakThenTroughThenPartialRecovery(t *testing.T) {
+func TestNewBacktestResult_MaxDrawdown_PeakThenTroughThenPartialRecovery(t *testing.T) {
 	operations := []domain.Operation{
 		{ // +5000: 10000 -> 15000 (new peak)
 			BuyOrder:  domain.Order{Price: newMoney(10000), Quantity: 1, OrderType: domain.Buy},
@@ -280,9 +280,9 @@ func TestNewResult_MaxDrawdown_PeakThenTroughThenPartialRecovery(t *testing.T) {
 		},
 	}
 
-	result, err := NewResult("Stub", operations, newMoney(10000))
+	result, err := NewBacktestResult("Stub", operations, newMoney(10000))
 	if err != nil {
-		t.Fatalf("NewResult: %v", err)
+		t.Fatalf("NewBacktestResult: %v", err)
 	}
 	// (15000 - 12000) / 15000 * 100
 	if !approxEqual(result.MaxDrawdownPercentage(), 20) {
@@ -299,7 +299,7 @@ func TestNewResult_MaxDrawdown_PeakThenTroughThenPartialRecovery(t *testing.T) {
 // with several distinct peak/trough cycles of different sizes, the reported
 // MaxDrawdownPercentage is the largest one encountered - not the first one
 // and not the last one.
-func TestNewResult_MaxDrawdown_PicksLargestOfSeveralDrawdowns(t *testing.T) {
+func TestNewBacktestResult_MaxDrawdown_PicksLargestOfSeveralDrawdowns(t *testing.T) {
 	operations := []domain.Operation{
 		{ // +5000: 10000 -> 15000 (peak)
 			BuyOrder:  domain.Order{Price: newMoney(10000), Quantity: 1, OrderType: domain.Buy},
@@ -327,9 +327,9 @@ func TestNewResult_MaxDrawdown_PicksLargestOfSeveralDrawdowns(t *testing.T) {
 		},
 	}
 
-	result, err := NewResult("Stub", operations, newMoney(10000))
+	result, err := NewBacktestResult("Stub", operations, newMoney(10000))
 	if err != nil {
-		t.Fatalf("NewResult: %v", err)
+		t.Fatalf("NewBacktestResult: %v", err)
 	}
 	// (17500 - 10500) / 17500 * 100
 	if !approxEqual(result.MaxDrawdownPercentage(), 40) {

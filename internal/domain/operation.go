@@ -63,7 +63,7 @@ func (o Operation) Days() (int, error) {
 }
 
 // operationJSON mirrors Operation but with a computed Days field added, same
-// shadow-struct pattern as backtest.Result's resultJSON.
+// shadow-struct pattern as backtest.BacktestResult's backtestResultJSON.
 type operationJSON struct {
 	Date      string `json:"date"`
 	BuyOrder  Order  `json:"buyOrder"`

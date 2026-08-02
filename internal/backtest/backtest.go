@@ -26,8 +26,8 @@ type Backtest struct {
 // Run loads b.Asset's candles within [b.Start, b.End], in date order, then
 // drives them one at a time through traverse (which owns the candle loop,
 // the running available cash, and the open Position - see traverse), and
-// compiles the resulting operations into a Result.
-func (b *Backtest) Run() (*Result, error) {
+// compiles the resulting operations into a BacktestResult.
+func (b *Backtest) Run() (*BacktestResult, error) {
 	candles, err := cotahist.LoadCandles(b.Asset, b.Start, b.End)
 	if err != nil {
 		return nil, fmt.Errorf("loading candles for %s: %w", b.Asset, err)
@@ -38,7 +38,7 @@ func (b *Backtest) Run() (*Result, error) {
 		return nil, err
 	}
 
-	return NewResult(b.Strategy.Name(), operations, b.Balance)
+	return NewBacktestResult(b.Strategy.Name(), operations, b.Balance)
 }
 
 // traverse feeds candles to strategy one at a time, in order, tracking the
@@ -136,24 +136,25 @@ func pickExit(strategyExit, stopExit *domain.Order) *domain.Order {
 	return strategyExit
 }
 
-// NewResult turns a completed operations list into a Result, given the
-// strategy's display name and the backtest's starting balance: go over each
-// operation, adding its gain or loss to the running total profit and
-// balance, counting it as a gain or a loss, and tracking the running peak
-// balance to find the largest peak-to-trough decline
-// (maxDrawdownPercentage/maxDrawdownAmount, cached on Result - see its
-// MaxDrawdownPercentage/MaxDrawdownAmount methods - since Operations, which
-// this walk depends on, may be cleared by callers after the fact to trim
-// response payloads).
+// NewBacktestResult turns a completed operations list into a
+// BacktestResult, given the strategy's display name and the backtest's
+// starting balance: go over each operation, adding its gain or loss to the
+// running total profit and balance, counting it as a gain or a loss, and
+// tracking the running peak balance to find the largest peak-to-trough
+// decline (maxDrawdownPercentage/maxDrawdownAmount, cached on
+// BacktestResult - see its MaxDrawdownPercentage/MaxDrawdownAmount
+// methods - since Operations, which this walk depends on, may be cleared
+// by callers after the fact to trim response payloads).
 //
-// This is the only way to construct a valid Result - both fields backing
-// MaxDrawdownPercentage/MaxDrawdownAmount are unexported, so a Result built
-// any other way (e.g. a struct literal from another package) can't set
-// them and would report a zero drawdown regardless of its Operations.
-// Callers that need a Result for a test, without going through a full
-// Backtest.Run(), should still call NewResult with real Operations rather
-// than fabricate one field at a time.
-func NewResult(strategyName string, operations []domain.Operation, startingBalance money.Money) (*Result, error) {
+// This is the only way to construct a valid BacktestResult - both fields
+// backing MaxDrawdownPercentage/MaxDrawdownAmount are unexported, so a
+// BacktestResult built any other way (e.g. a struct literal from another
+// package) can't set them and would report a zero drawdown regardless of
+// its Operations. Callers that need a BacktestResult for a test, without
+// going through a full Backtest.Run(), should still call
+// NewBacktestResult with real Operations rather than fabricate one field
+// at a time.
+func NewBacktestResult(strategyName string, operations []domain.Operation, startingBalance money.Money) (*BacktestResult, error) {
 	total := len(operations)
 
 	profit := money.New(0, domain.Currency)
@@ -209,7 +210,7 @@ func NewResult(strategyName string, operations []domain.Operation, startingBalan
 		}
 	}
 
-	return &Result{
+	return &BacktestResult{
 		StrategyName:          strategyName,
 		Operations:            operations,
 		StartingBalance:       startingBalance,

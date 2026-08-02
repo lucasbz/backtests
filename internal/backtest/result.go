@@ -7,7 +7,7 @@ import (
 	"github.com/lucasbz/backtests/internal/domain"
 )
 
-type Result struct {
+type BacktestResult struct {
 	StrategyName    string
 	Operations      []domain.Operation
 	StartingBalance money.Money
@@ -18,26 +18,27 @@ type Result struct {
 	Losses          int
 
 	// maxDrawdownPercentage and maxDrawdownAmount are computed once, in
-	// NewResult, from Operations - which callers may clear afterward to
+	// NewBacktestResult, from Operations - which callers may clear afterward to
 	// trim response payloads (see internal/api's handleBacktest nil-ing
 	// Operations for non-verbose requests). Caching them here rather than
 	// recomputing from Operations on every MaxDrawdownPercentage/
 	// MaxDrawdownAmount call keeps them correct regardless of whether
 	// Operations is still populated by the time they're called.
 	//
-	// Both are unexported specifically so a Result can only be built
-	// through NewResult: money.Money's zero value isn't safe to display,
-	// so an exported field here could be left unset by a struct literal
-	// built outside this package and panic the first time it's read (this
-	// happened once already, in internal/cli's tests, before NewResult
-	// existed) - keeping the fields private closes that off entirely.
+	// Both are unexported specifically so a BacktestResult can only be
+	// built through NewBacktestResult: money.Money's zero value isn't safe
+	// to display, so an exported field here could be left unset by a
+	// struct literal built outside this package and panic the first time
+	// it's read (this happened once already, in internal/cli's tests,
+	// before NewBacktestResult existed) - keeping the fields private
+	// closes that off entirely.
 	maxDrawdownPercentage float64
 	maxDrawdownAmount     money.Money
 }
 
 // ProfitPercentage is Profit relative to StartingBalance (e.g. 12.5 for a
 // 12.5% return). Zero when StartingBalance is zero.
-func (r Result) ProfitPercentage() float64 {
+func (r BacktestResult) ProfitPercentage() float64 {
 	if r.StartingBalance.IsZero() {
 		return 0
 	}
@@ -46,7 +47,7 @@ func (r Result) ProfitPercentage() float64 {
 
 // WinRate is the share of operations that were gains, e.g. 66.67 for 2 out
 // of 3. Zero when there were no operations.
-func (r Result) WinRate() float64 {
+func (r BacktestResult) WinRate() float64 {
 	if r.TotalOperations == 0 {
 		return 0
 	}
@@ -54,26 +55,28 @@ func (r Result) WinRate() float64 {
 }
 
 // MaxDrawdownPercentage is the largest peak-to-trough decline in balance
-// across the operations that produced this Result, as a percentage of the
-// peak (e.g. 15.23 for a 15.23% drawdown). Zero if the balance never
-// declined below a prior peak (including when there were no operations).
-func (r Result) MaxDrawdownPercentage() float64 {
+// across the operations that produced this BacktestResult, as a
+// percentage of the peak (e.g. 15.23 for a 15.23% drawdown). Zero if the
+// balance never declined below a prior peak (including when there were no
+// operations).
+func (r BacktestResult) MaxDrawdownPercentage() float64 {
 	return r.maxDrawdownPercentage
 }
 
-// MaxDrawdownAmount is the largest peak-to-trough decline in balance across
-// the operations that produced this Result, in absolute currency terms
-// (always non-negative). Zero under the same conditions as
+// MaxDrawdownAmount is the largest peak-to-trough decline in balance
+// across the operations that produced this BacktestResult, in absolute
+// currency terms (always non-negative). Zero under the same conditions as
 // MaxDrawdownPercentage.
-func (r Result) MaxDrawdownAmount() money.Money {
+func (r BacktestResult) MaxDrawdownAmount() money.Money {
 	return r.maxDrawdownAmount
 }
 
-// resultJSON mirrors Result but with money.Money fields converted to plain
+// backtestResultJSON mirrors BacktestResult but with money.Money fields
+// converted to plain
 // JSON numbers (see domain.Candle's candleJSON for the same pattern), and
 // Operations marked omitempty so API callers can drop it (e.g. when the
 // caller didn't ask for verbose output) by nil-ing it out before marshaling.
-type resultJSON struct {
+type backtestResultJSON struct {
 	StrategyName          string             `json:"strategyName"`
 	StartingBalance       float64            `json:"startingBalance"`
 	EndingBalance         float64            `json:"endingBalance"`
@@ -88,9 +91,9 @@ type resultJSON struct {
 	Operations            []domain.Operation `json:"operations,omitempty"`
 }
 
-func (r Result) MarshalJSON() ([]byte, error) {
+func (r BacktestResult) MarshalJSON() ([]byte, error) {
 	maxDrawdownAmount := r.MaxDrawdownAmount()
-	return json.Marshal(resultJSON{
+	return json.Marshal(backtestResultJSON{
 		StrategyName:          r.StrategyName,
 		StartingBalance:       r.StartingBalance.AsMajorUnits(),
 		EndingBalance:         r.EndingBalance.AsMajorUnits(),

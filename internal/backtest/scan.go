@@ -46,8 +46,8 @@ type ScanParams struct {
 // see Scan's doc comment.
 type ScanResult struct {
 	Asset      string
-	Baseline   *Result
-	Challenger *Result
+	Baseline   *BacktestResult
+	Challenger *BacktestResult
 	// Delta is Challenger.ProfitPercentage() - Baseline.ProfitPercentage().
 	Delta float64
 	// Won is Delta > 0 (strictly - a tie is not a win).

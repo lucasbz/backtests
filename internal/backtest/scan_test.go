@@ -94,7 +94,7 @@ func TestScan_MatchesSequentialBacktest(t *testing.T) {
 	}
 }
 
-func assertResultsEqual(t *testing.T, label string, got, want *Result) {
+func assertResultsEqual(t *testing.T, label string, got, want *BacktestResult) {
 	t.Helper()
 	if got == nil || want == nil {
 		t.Fatalf("%s: got=%v want=%v, want both non-nil", label, got, want)

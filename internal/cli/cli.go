@@ -99,7 +99,7 @@ func RunBacktest(args []string) error {
 	return nil
 }
 
-func printResult(asset string, start, end time.Time, result *backtest.Result, verbose bool) {
+func printResult(asset string, start, end time.Time, result *backtest.BacktestResult, verbose bool) {
 	maxDrawdownAmount := result.MaxDrawdownAmount()
 	fmt.Printf(
 		"Running Backtest for: %s %s to %s | Strategy: %s | Balance: %s -> %s (Profit: %s, %.2f%%) | G/L/T: %d/%d/%d (WR: %.2f%%) | Max DD: %s (%.2f%%)\n",
@@ -254,7 +254,7 @@ func RunCompare(args []string) error {
 // EndingBalance) since both runs share the same starting balance and
 // ProfitPercentage is what's already displayed per-result by printResult,
 // so the summary reads consistently with the two lines above it.
-func printComparisonSummary(baseline, challenger *backtest.Result) {
+func printComparisonSummary(baseline, challenger *backtest.BacktestResult) {
 	diff := challenger.ProfitPercentage() - baseline.ProfitPercentage()
 	switch {
 	case diff > 0:

@@ -9,7 +9,7 @@ import (
 	"github.com/Rhymond/go-money"
 )
 
-// Currency is the currency every Candle/Order/Result money value is
+// Currency is the currency every Candle/Order/BacktestResult money value is
 // denominated in. B3, the exchange scripts/import_cotahist.go pulls from,
 // only ever quotes in Brazilian reais.
 const Currency = money.BRL

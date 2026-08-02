@@ -226,11 +226,11 @@ func TestRunCLI_Backtest_Verbose(t *testing.T) {
 
 // TestPrintResult_Verbose exercises printResult directly with a synthetic
 // result, so the verbose operations-printing branch doesn't depend on real
-// data producing at least one operation. Built via backtest.NewResult
-// (the only way to construct a valid Result - see its doc comment) rather
-// than a Result{} struct literal, so EndingBalance/Profit/Gains/etc. are
-// derived from operations instead of hand-typed values that could silently
-// drift out of sync with them.
+// data producing at least one operation. Built via backtest.NewBacktestResult
+// (the only way to construct a valid BacktestResult - see its doc comment)
+// rather than a BacktestResult{} struct literal, so EndingBalance/Profit/
+// Gains/etc. are derived from operations instead of hand-typed values that
+// could silently drift out of sync with them.
 func TestPrintResult_Verbose(t *testing.T) {
 	operations := []domain.Operation{
 		{
@@ -249,9 +249,9 @@ func TestPrintResult_Verbose(t *testing.T) {
 			},
 		},
 	}
-	result, err := backtest.NewResult("Test Strategy", operations, *money.New(10000, domain.Currency))
+	result, err := backtest.NewBacktestResult("Test Strategy", operations, *money.New(10000, domain.Currency))
 	if err != nil {
-		t.Fatalf("NewResult: %v", err)
+		t.Fatalf("NewBacktestResult: %v", err)
 	}
 
 	start := mustParseDate(t, "2020-01-01")
