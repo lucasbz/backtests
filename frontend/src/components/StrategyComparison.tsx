@@ -7,6 +7,7 @@ import {
   type BacktestResult,
 } from '../api/client';
 import { BacktestResultCard } from './BacktestResultCard';
+import { BaselineResultCard } from './BaselineResultCard';
 import { buttonPrimaryClasses, errorBoxClasses, fieldClasses } from '../styles/ui';
 import { canSubmitBacktest } from '../utils/backtestForm';
 
@@ -265,7 +266,7 @@ export function StrategyComparison({
 
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
             <label htmlFor="bt-stop-loss-value" className="text-sm text-text">
-              Trigger value{stopLossType === 'percent' ? ' (%)' : stopLossType === 'fixed-amount' ? ' (R$)' : ''}
+              Trigger value{stopLossType === 'percent' ? ' (%)' : stopLossType === 'fixed-amount' ? ' (R$ per share)' : stopLossType === 'total-fixed-amount' ? ' (R$ total)' : ''}
             </label>
             <input
               id="bt-stop-loss-value"
@@ -299,37 +300,31 @@ export function StrategyComparison({
         </div>
       )}
 
-      {(baselineResult || challengerResult || baselineError || challengerError) && (
-        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div className="min-w-0">
-            {baselineError && (
-              <div className={errorBoxClasses} role="alert">
-                {baselineError}
-              </div>
-            )}
-            {baselineResult && (
-              <BacktestResultCard
-                result={baselineResult}
-                label="Baseline"
-                variant="baseline"
-              />
-            )}
-          </div>
+      {(baselineResult || baselineError) && (
+        <div className="mt-6">
+          {baselineError && (
+            <div className={errorBoxClasses} role="alert">
+              {baselineError}
+            </div>
+          )}
+          {baselineResult && <BaselineResultCard result={baselineResult} />}
+        </div>
+      )}
 
-          <div className="min-w-0">
-            {challengerError && (
-              <div className={errorBoxClasses} role="alert">
-                {challengerError}
-              </div>
-            )}
-            {challengerResult && (
-              <BacktestResultCard
-                result={challengerResult}
-                label="Your pick"
-                variant="challenger"
-              />
-            )}
-          </div>
+      {(challengerResult || challengerError) && (
+        <div className="mt-4">
+          {challengerError && (
+            <div className={errorBoxClasses} role="alert">
+              {challengerError}
+            </div>
+          )}
+          {challengerResult && (
+            <BacktestResultCard
+              result={challengerResult}
+              label="Your pick"
+              variant="challenger"
+            />
+          )}
         </div>
       )}
     </section>

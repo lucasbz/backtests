@@ -126,6 +126,7 @@ export interface Operation {
   date: string;
   buyOrder: Order;
   sellOrder: Order;
+  days: number;
 }
 
 export interface BacktestResult {
@@ -138,6 +139,8 @@ export interface BacktestResult {
   gains: number;
   losses: number;
   winRate: number;
+  maxDrawdownAmount: number;
+  maxDrawdownPercentage: number;
   // Present only when the request set `verbose: true`.
   operations?: Operation[];
 }
