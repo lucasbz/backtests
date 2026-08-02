@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"bytes"
@@ -31,7 +31,7 @@ func mustParseDate(t *testing.T, s string) time.Time {
 // Mirrors the identically-named helper in internal/api/api_test.go.
 func chdirToRepoRoot(t *testing.T) {
 	t.Helper()
-	t.Chdir("..")
+	t.Chdir("../..")
 }
 
 // captureStdout redirects os.Stdout for the duration of fn and returns
@@ -59,8 +59,8 @@ func captureStdout(t *testing.T, fn func()) string {
 	return buf.String()
 }
 
-func TestRun_Backtest_Valid(t *testing.T) {
-	err := run([]string{
+func TestRunCLI_Backtest_Valid(t *testing.T) {
+	err := RunCLI([]string{
 		"backtest",
 		"-asset", "PETR4",
 		"-start", "2010-01-01",
@@ -73,8 +73,8 @@ func TestRun_Backtest_Valid(t *testing.T) {
 	}
 }
 
-func TestRun_Backtest_UnknownStrategy(t *testing.T) {
-	err := run([]string{
+func TestRunCLI_Backtest_UnknownStrategy(t *testing.T) {
+	err := RunCLI([]string{
 		"backtest",
 		"-asset", "PETR4",
 		"-start", "2010-01-01",
@@ -87,15 +87,15 @@ func TestRun_Backtest_UnknownStrategy(t *testing.T) {
 	}
 }
 
-func TestRun_Backtest_MissingArgs(t *testing.T) {
-	err := run([]string{"backtest", "-asset", "PETR4"})
+func TestRunCLI_Backtest_MissingArgs(t *testing.T) {
+	err := RunCLI([]string{"backtest", "-asset", "PETR4"})
 	if err == nil {
 		t.Fatal("expected error for missing required flags")
 	}
 }
 
-func TestRun_Backtest_MissingBalance(t *testing.T) {
-	err := run([]string{
+func TestRunCLI_Backtest_MissingBalance(t *testing.T) {
+	err := RunCLI([]string{
 		"backtest",
 		"-asset", "PETR4",
 		"-start", "2010-01-01",
@@ -107,8 +107,8 @@ func TestRun_Backtest_MissingBalance(t *testing.T) {
 	}
 }
 
-func TestRun_Backtest_InvalidBalance(t *testing.T) {
-	err := run([]string{
+func TestRunCLI_Backtest_InvalidBalance(t *testing.T) {
+	err := RunCLI([]string{
 		"backtest",
 		"-asset", "PETR4",
 		"-start", "2010-01-01",
@@ -121,8 +121,8 @@ func TestRun_Backtest_InvalidBalance(t *testing.T) {
 	}
 }
 
-func TestRun_Backtest_ZeroBalance(t *testing.T) {
-	err := run([]string{
+func TestRunCLI_Backtest_ZeroBalance(t *testing.T) {
+	err := RunCLI([]string{
 		"backtest",
 		"-asset", "PETR4",
 		"-start", "2010-01-01",
@@ -135,8 +135,8 @@ func TestRun_Backtest_ZeroBalance(t *testing.T) {
 	}
 }
 
-func TestRun_Backtest_InvalidDate(t *testing.T) {
-	err := run([]string{
+func TestRunCLI_Backtest_InvalidDate(t *testing.T) {
+	err := RunCLI([]string{
 		"backtest",
 		"-asset", "PETR4",
 		"-start", "not-a-date",
@@ -149,8 +149,8 @@ func TestRun_Backtest_InvalidDate(t *testing.T) {
 	}
 }
 
-func TestRun_Backtest_InvalidEndDate(t *testing.T) {
-	err := run([]string{
+func TestRunCLI_Backtest_InvalidEndDate(t *testing.T) {
+	err := RunCLI([]string{
 		"backtest",
 		"-asset", "PETR4",
 		"-start", "2010-01-01",
@@ -163,18 +163,18 @@ func TestRun_Backtest_InvalidEndDate(t *testing.T) {
 	}
 }
 
-func TestRun_Backtest_InvalidFlag(t *testing.T) {
-	err := run([]string{"backtest", "-not-a-real-flag"})
+func TestRunCLI_Backtest_InvalidFlag(t *testing.T) {
+	err := RunCLI([]string{"backtest", "-not-a-real-flag"})
 	if err == nil {
 		t.Fatal("expected error for unknown flag")
 	}
 }
 
-// TestRun_Backtest_LoadCandlesError chdirs into a temp directory that mimics
+// TestRunCLI_Backtest_LoadCandlesError chdirs into a temp directory that mimics
 // the resources/cotahist layout LoadCandles reads from, but with a
-// malformed year file, so bt.Run() fails while loading candles and that
+// malformed year file, so bt.RunCLI() fails while loading candles and that
 // error propagates out of runBacktest.
-func TestRun_Backtest_LoadCandlesError(t *testing.T) {
+func TestRunCLI_Backtest_LoadCandlesError(t *testing.T) {
 	dir := t.TempDir()
 	tickerDir := filepath.Join(dir, "resources", "cotahist", "BADTICKER")
 	if err := os.MkdirAll(tickerDir, 0o755); err != nil {
@@ -185,7 +185,7 @@ func TestRun_Backtest_LoadCandlesError(t *testing.T) {
 	}
 	t.Chdir(dir)
 
-	err := run([]string{
+	err := RunCLI([]string{
 		"backtest",
 		"-asset", "BADTICKER",
 		"-start", "2010-01-01",
@@ -198,11 +198,11 @@ func TestRun_Backtest_LoadCandlesError(t *testing.T) {
 	}
 }
 
-func TestRun_Backtest_Verbose(t *testing.T) {
+func TestRunCLI_Backtest_Verbose(t *testing.T) {
 	chdirToRepoRoot(t)
 
 	output := captureStdout(t, func() {
-		err := run([]string{
+		err := RunCLI([]string{
 			"backtest",
 			"-asset", "PETR4",
 			"-start", "2015-01-02",
@@ -226,34 +226,32 @@ func TestRun_Backtest_Verbose(t *testing.T) {
 
 // TestPrintResult_Verbose exercises printResult directly with a synthetic
 // result, so the verbose operations-printing branch doesn't depend on real
-// data producing at least one operation.
+// data producing at least one operation. Built via backtest.NewResult
+// (the only way to construct a valid Result - see its doc comment) rather
+// than a Result{} struct literal, so EndingBalance/Profit/Gains/etc. are
+// derived from operations instead of hand-typed values that could silently
+// drift out of sync with them.
 func TestPrintResult_Verbose(t *testing.T) {
-	result := &backtest.Result{
-		StrategyName:      "Test Strategy",
-		StartingBalance:   *money.New(10000, domain.Currency),
-		EndingBalance:     *money.New(11000, domain.Currency),
-		Profit:            *money.New(1000, domain.Currency),
-		TotalOperations:   1,
-		Gains:             1,
-		Losses:            0,
-		MaxDrawdownAmount: *money.New(0, domain.Currency),
-		Operations: []domain.Operation{
-			{
-				Date: "2020-01-01",
-				BuyOrder: domain.Order{
-					Date:      "2020-01-01",
-					Price:     *money.New(1000, domain.Currency),
-					Quantity:  10,
-					OrderType: domain.Buy,
-				},
-				SellOrder: domain.Order{
-					Date:      "2020-02-01",
-					Price:     *money.New(1100, domain.Currency),
-					Quantity:  10,
-					OrderType: domain.Sell,
-				},
+	operations := []domain.Operation{
+		{
+			Date: "2020-01-01",
+			BuyOrder: domain.Order{
+				Date:      "2020-01-01",
+				Price:     *money.New(1000, domain.Currency),
+				Quantity:  10,
+				OrderType: domain.Buy,
+			},
+			SellOrder: domain.Order{
+				Date:      "2020-02-01",
+				Price:     *money.New(1100, domain.Currency),
+				Quantity:  10,
+				OrderType: domain.Sell,
 			},
 		},
+	}
+	result, err := backtest.NewResult("Test Strategy", operations, *money.New(10000, domain.Currency))
+	if err != nil {
+		t.Fatalf("NewResult: %v", err)
 	}
 
 	start := mustParseDate(t, "2020-01-01")
@@ -270,11 +268,11 @@ func TestPrintResult_Verbose(t *testing.T) {
 	}
 }
 
-func TestRun_Compare_Valid(t *testing.T) {
+func TestRunCLI_Compare_Valid(t *testing.T) {
 	chdirToRepoRoot(t)
 
 	output := captureStdout(t, func() {
-		err := run([]string{
+		err := RunCLI([]string{
 			"compare",
 			"-asset", "PETR4",
 			"-start", "2015-01-02",
@@ -298,11 +296,11 @@ func TestRun_Compare_Valid(t *testing.T) {
 	}
 }
 
-func TestRun_Compare_Verbose(t *testing.T) {
+func TestRunCLI_Compare_Verbose(t *testing.T) {
 	chdirToRepoRoot(t)
 
 	output := captureStdout(t, func() {
-		err := run([]string{
+		err := RunCLI([]string{
 			"compare",
 			"-asset", "PETR4",
 			"-start", "2015-01-02",
@@ -324,15 +322,15 @@ func TestRun_Compare_Verbose(t *testing.T) {
 	}
 }
 
-func TestRun_Compare_MissingArgs(t *testing.T) {
-	err := run([]string{"compare", "-asset", "PETR4"})
+func TestRunCLI_Compare_MissingArgs(t *testing.T) {
+	err := RunCLI([]string{"compare", "-asset", "PETR4"})
 	if err == nil {
 		t.Fatal("expected error for missing required flags")
 	}
 }
 
-func TestRun_Compare_MissingBalance(t *testing.T) {
-	err := run([]string{
+func TestRunCLI_Compare_MissingBalance(t *testing.T) {
+	err := RunCLI([]string{
 		"compare",
 		"-asset", "PETR4",
 		"-start", "2010-01-01",
@@ -344,8 +342,8 @@ func TestRun_Compare_MissingBalance(t *testing.T) {
 	}
 }
 
-func TestRun_Compare_UnknownStrategy(t *testing.T) {
-	err := run([]string{
+func TestRunCLI_Compare_UnknownStrategy(t *testing.T) {
+	err := RunCLI([]string{
 		"compare",
 		"-asset", "PETR4",
 		"-start", "2010-01-01",
@@ -358,12 +356,12 @@ func TestRun_Compare_UnknownStrategy(t *testing.T) {
 	}
 }
 
-// TestRun_Compare_BuyAndHoldChallengerRejected asserts -strategy buy-and-hold
+// TestRunCLI_Compare_BuyAndHoldChallengerRejected asserts -strategy buy-and-hold
 // is rejected for the challenger: Buy & Hold is always the fixed baseline
 // (see runCompare), so comparing it against itself is meaningless, mirroring
 // StrategyComparison.tsx's exclusion of it from the pickable strategy list.
-func TestRun_Compare_BuyAndHoldChallengerRejected(t *testing.T) {
-	err := run([]string{
+func TestRunCLI_Compare_BuyAndHoldChallengerRejected(t *testing.T) {
+	err := RunCLI([]string{
 		"compare",
 		"-asset", "PETR4",
 		"-start", "2010-01-01",
@@ -376,8 +374,8 @@ func TestRun_Compare_BuyAndHoldChallengerRejected(t *testing.T) {
 	}
 }
 
-func TestRun_Compare_InvalidFlag(t *testing.T) {
-	err := run([]string{"compare", "-not-a-real-flag"})
+func TestRunCLI_Compare_InvalidFlag(t *testing.T) {
+	err := RunCLI([]string{"compare", "-not-a-real-flag"})
 	if err == nil {
 		t.Fatal("expected error for unknown flag")
 	}
@@ -391,10 +389,10 @@ func TestRun_Compare_InvalidFlag(t *testing.T) {
 func writeRealAssetYearFixture(t *testing.T, destDir, ticker string, year int) {
 	t.Helper()
 
-	// The test binary's cwd is cmd/ (this package's directory), so ".."
-	// is the repo root - same relative step chdirToRepoRoot takes, just
-	// resolved to an absolute path before any t.Chdir happens.
-	repoRoot, err := filepath.Abs("..")
+	// The test binary's cwd is internal/cli/ (this package's directory), so
+	// "../.." is the repo root - same relative step chdirToRepoRoot takes,
+	// just resolved to an absolute path before any t.Chdir happens.
+	repoRoot, err := filepath.Abs("../..")
 	if err != nil {
 		t.Fatalf("Abs: %v", err)
 	}
@@ -415,7 +413,7 @@ func writeRealAssetYearFixture(t *testing.T, destDir, ticker string, year int) {
 	}
 }
 
-func TestRun_Scan_Valid(t *testing.T) {
+func TestRunCLI_Scan_Valid(t *testing.T) {
 	dir := t.TempDir()
 	tickers := []string{"PETR4", "VALE3", "ITUB4"}
 	for _, ticker := range tickers {
@@ -424,7 +422,7 @@ func TestRun_Scan_Valid(t *testing.T) {
 	t.Chdir(dir)
 
 	output := captureStdout(t, func() {
-		err := run([]string{
+		err := RunCLI([]string{
 			"scan",
 			"-start", "2015-01-02",
 			"-end", "2015-12-30",
@@ -453,15 +451,15 @@ func TestRun_Scan_Valid(t *testing.T) {
 	}
 }
 
-// TestRun_Scan_Verbose checks -v additionally prints a per-asset operations
+// TestRunCLI_Scan_Verbose checks -v additionally prints a per-asset operations
 // table for an asset the challenger actually traded on.
-func TestRun_Scan_Verbose(t *testing.T) {
+func TestRunCLI_Scan_Verbose(t *testing.T) {
 	dir := t.TempDir()
 	writeRealAssetYearFixture(t, dir, "PETR4", 2015)
 	t.Chdir(dir)
 
 	output := captureStdout(t, func() {
-		err := run([]string{
+		err := RunCLI([]string{
 			"scan",
 			"-start", "2015-01-02",
 			"-end", "2015-12-30",
@@ -483,15 +481,15 @@ func TestRun_Scan_Verbose(t *testing.T) {
 	}
 }
 
-func TestRun_Scan_MissingArgs(t *testing.T) {
-	err := run([]string{"scan", "-start", "2015-01-02"})
+func TestRunCLI_Scan_MissingArgs(t *testing.T) {
+	err := RunCLI([]string{"scan", "-start", "2015-01-02"})
 	if err == nil {
 		t.Fatal("expected error for missing required flags")
 	}
 }
 
-func TestRun_Scan_MissingBalance(t *testing.T) {
-	err := run([]string{
+func TestRunCLI_Scan_MissingBalance(t *testing.T) {
+	err := RunCLI([]string{
 		"scan",
 		"-start", "2010-01-01",
 		"-end", "2010-12-31",
@@ -502,8 +500,8 @@ func TestRun_Scan_MissingBalance(t *testing.T) {
 	}
 }
 
-func TestRun_Scan_UnknownStrategy(t *testing.T) {
-	err := run([]string{
+func TestRunCLI_Scan_UnknownStrategy(t *testing.T) {
+	err := RunCLI([]string{
 		"scan",
 		"-start", "2010-01-01",
 		"-end", "2010-12-31",
@@ -515,11 +513,11 @@ func TestRun_Scan_UnknownStrategy(t *testing.T) {
 	}
 }
 
-// TestRun_Scan_BuyAndHoldChallengerRejected mirrors
-// TestRun_Compare_BuyAndHoldChallengerRejected: scan's baseline is always
+// TestRunCLI_Scan_BuyAndHoldChallengerRejected mirrors
+// TestRunCLI_Compare_BuyAndHoldChallengerRejected: scan's baseline is always
 // Buy & Hold, so it can't also be the challenger.
-func TestRun_Scan_BuyAndHoldChallengerRejected(t *testing.T) {
-	err := run([]string{
+func TestRunCLI_Scan_BuyAndHoldChallengerRejected(t *testing.T) {
+	err := RunCLI([]string{
 		"scan",
 		"-start", "2010-01-01",
 		"-end", "2010-12-31",
@@ -531,15 +529,15 @@ func TestRun_Scan_BuyAndHoldChallengerRejected(t *testing.T) {
 	}
 }
 
-func TestRun_Scan_InvalidFlag(t *testing.T) {
-	err := run([]string{"scan", "-not-a-real-flag"})
+func TestRunCLI_Scan_InvalidFlag(t *testing.T) {
+	err := RunCLI([]string{"scan", "-not-a-real-flag"})
 	if err == nil {
 		t.Fatal("expected error for unknown flag")
 	}
 }
 
-func TestRun_Scan_InvalidDate(t *testing.T) {
-	err := run([]string{
+func TestRunCLI_Scan_InvalidDate(t *testing.T) {
+	err := RunCLI([]string{
 		"scan",
 		"-start", "not-a-date",
 		"-end", "2010-12-31",
@@ -551,8 +549,8 @@ func TestRun_Scan_InvalidDate(t *testing.T) {
 	}
 }
 
-func TestRun_Scan_InvalidBalance(t *testing.T) {
-	err := run([]string{
+func TestRunCLI_Scan_InvalidBalance(t *testing.T) {
+	err := RunCLI([]string{
 		"scan",
 		"-start", "2010-01-01",
 		"-end", "2010-12-31",
@@ -564,10 +562,10 @@ func TestRun_Scan_InvalidBalance(t *testing.T) {
 	}
 }
 
-// TestRun_Scan_YearFiltersAssetUniverse: PETR4 has both a 2015 and 2016
+// TestRunCLI_Scan_YearFiltersAssetUniverse: PETR4 has both a 2015 and 2016
 // file, VALE3 only 2016, so -year 2015 must scan just PETR4 while -year
 // 2016 scans both.
-func TestRun_Scan_YearFiltersAssetUniverse(t *testing.T) {
+func TestRunCLI_Scan_YearFiltersAssetUniverse(t *testing.T) {
 	dir := t.TempDir()
 	writeRealAssetYearFixture(t, dir, "PETR4", 2015)
 	writeRealAssetYearFixture(t, dir, "PETR4", 2016)
@@ -576,7 +574,7 @@ func TestRun_Scan_YearFiltersAssetUniverse(t *testing.T) {
 
 	scanFor := func(year string) string {
 		return captureStdout(t, func() {
-			err := run([]string{
+			err := RunCLI([]string{
 				"scan",
 				"-start", "2015-01-02",
 				"-end", "2016-12-30",
@@ -624,7 +622,7 @@ func writeConfigFile(t *testing.T, contents string) string {
 	return path
 }
 
-func TestRun_Backtest_Config_AllFieldsFromFile(t *testing.T) {
+func TestRunCLI_Backtest_Config_AllFieldsFromFile(t *testing.T) {
 	chdirToRepoRoot(t)
 
 	configPath := writeConfigFile(t, `{
@@ -636,7 +634,7 @@ func TestRun_Backtest_Config_AllFieldsFromFile(t *testing.T) {
 	}`)
 
 	output := captureStdout(t, func() {
-		err := run([]string{"backtest", "-config", configPath})
+		err := RunCLI([]string{"backtest", "-config", configPath})
 		if err != nil {
 			t.Fatalf("run: %v", err)
 		}
@@ -650,12 +648,12 @@ func TestRun_Backtest_Config_AllFieldsFromFile(t *testing.T) {
 	}
 }
 
-// TestRun_Backtest_Config_StrategyParams asserts a config file's
+// TestRunCLI_Backtest_Config_StrategyParams asserts a config file's
 // "strategyParams" object is threaded into strategies.LoadStrategy,
 // letting a parameterized strategy like "sma-crossover" (which requires
 // "shortPeriod"/"longPeriod" - see internal/strategies/crossover.go) run
 // successfully from -config alone, with no per-key CLI flag involved.
-func TestRun_Backtest_Config_StrategyParams(t *testing.T) {
+func TestRunCLI_Backtest_Config_StrategyParams(t *testing.T) {
 	chdirToRepoRoot(t)
 
 	configPath := writeConfigFile(t, `{
@@ -668,7 +666,7 @@ func TestRun_Backtest_Config_StrategyParams(t *testing.T) {
 	}`)
 
 	output := captureStdout(t, func() {
-		err := run([]string{"backtest", "-config", configPath})
+		err := RunCLI([]string{"backtest", "-config", configPath})
 		if err != nil {
 			t.Fatalf("run: %v", err)
 		}
@@ -679,12 +677,12 @@ func TestRun_Backtest_Config_StrategyParams(t *testing.T) {
 	}
 }
 
-// TestRun_Backtest_Config_StrategyParams_MissingRequiredParam asserts a
+// TestRunCLI_Backtest_Config_StrategyParams_MissingRequiredParam asserts a
 // parameterized strategy's own validation still runs when its params come
 // from the config file: sma-crossover requires both shortPeriod and
 // longPeriod, so a config file that only sets one of them must fail with
 // an error, not silently fall back to some default.
-func TestRun_Backtest_Config_StrategyParams_MissingRequiredParam(t *testing.T) {
+func TestRunCLI_Backtest_Config_StrategyParams_MissingRequiredParam(t *testing.T) {
 	configPath := writeConfigFile(t, `{
 		"asset": "PETR4",
 		"start": "2015-01-02",
@@ -694,17 +692,17 @@ func TestRun_Backtest_Config_StrategyParams_MissingRequiredParam(t *testing.T) {
 		"strategyParams": {"shortPeriod": 5}
 	}`)
 
-	err := run([]string{"backtest", "-config", configPath})
+	err := RunCLI([]string{"backtest", "-config", configPath})
 	if err == nil {
 		t.Fatal("expected error for a strategyParams object missing a required key")
 	}
 }
 
-// TestRun_Backtest_Config_FlagOverridesFile passes -strategy explicitly
+// TestRunCLI_Backtest_Config_FlagOverridesFile passes -strategy explicitly
 // alongside -config (whose strategy field names a different strategy), and
 // asserts the explicit flag wins, proving flags always override the config
 // file rather than the other way around.
-func TestRun_Backtest_Config_FlagOverridesFile(t *testing.T) {
+func TestRunCLI_Backtest_Config_FlagOverridesFile(t *testing.T) {
 	chdirToRepoRoot(t)
 
 	configPath := writeConfigFile(t, `{
@@ -716,7 +714,7 @@ func TestRun_Backtest_Config_FlagOverridesFile(t *testing.T) {
 	}`)
 
 	output := captureStdout(t, func() {
-		err := run([]string{
+		err := RunCLI([]string{
 			"backtest",
 			"-config", configPath,
 			"-strategy", "two-candle-breakout",
@@ -734,27 +732,27 @@ func TestRun_Backtest_Config_FlagOverridesFile(t *testing.T) {
 	}
 }
 
-func TestRun_Backtest_Config_FileNotFound(t *testing.T) {
-	err := run([]string{"backtest", "-config", "/does/not/exist/config.json"})
+func TestRunCLI_Backtest_Config_FileNotFound(t *testing.T) {
+	err := RunCLI([]string{"backtest", "-config", "/does/not/exist/config.json"})
 	if err == nil {
 		t.Fatal("expected error for missing config file")
 	}
 }
 
-func TestRun_Backtest_Config_MalformedJSON(t *testing.T) {
+func TestRunCLI_Backtest_Config_MalformedJSON(t *testing.T) {
 	configPath := writeConfigFile(t, `{not valid json`)
 
-	err := run([]string{"backtest", "-config", configPath})
+	err := RunCLI([]string{"backtest", "-config", configPath})
 	if err == nil {
 		t.Fatal("expected error for malformed config file")
 	}
 }
 
-// TestRun_Backtest_Config_UnknownField asserts a typo'd field name (e.g.
+// TestRunCLI_Backtest_Config_UnknownField asserts a typo'd field name (e.g.
 // "assset" instead of "asset") is rejected with an error rather than
 // silently ignored, which would otherwise leave that flag at its empty
 // default with no clue why.
-func TestRun_Backtest_Config_UnknownField(t *testing.T) {
+func TestRunCLI_Backtest_Config_UnknownField(t *testing.T) {
 	configPath := writeConfigFile(t, `{
 		"assset": "PETR4",
 		"start": "2015-01-02",
@@ -763,16 +761,16 @@ func TestRun_Backtest_Config_UnknownField(t *testing.T) {
 		"strategy": "buy-and-hold"
 	}`)
 
-	err := run([]string{"backtest", "-config", configPath})
+	err := RunCLI([]string{"backtest", "-config", configPath})
 	if err == nil {
 		t.Fatal("expected error for unknown config field")
 	}
 }
 
-// TestRun_Backtest_Config_VerboseFromFile asserts "verbose": true in the
+// TestRunCLI_Backtest_Config_VerboseFromFile asserts "verbose": true in the
 // config file turns on the operations table just like -v would, when -v
 // itself isn't passed on the command line.
-func TestRun_Backtest_Config_VerboseFromFile(t *testing.T) {
+func TestRunCLI_Backtest_Config_VerboseFromFile(t *testing.T) {
 	chdirToRepoRoot(t)
 
 	configPath := writeConfigFile(t, `{
@@ -785,7 +783,7 @@ func TestRun_Backtest_Config_VerboseFromFile(t *testing.T) {
 	}`)
 
 	output := captureStdout(t, func() {
-		err := run([]string{"backtest", "-config", configPath})
+		err := RunCLI([]string{"backtest", "-config", configPath})
 		if err != nil {
 			t.Fatalf("run: %v", err)
 		}
@@ -796,13 +794,13 @@ func TestRun_Backtest_Config_VerboseFromFile(t *testing.T) {
 	}
 }
 
-// TestRun_Backtest_Config_ExplicitFalseOverridesFileVerbose is the trickiest
+// TestRunCLI_Backtest_Config_ExplicitFalseOverridesFileVerbose is the trickiest
 // case in the -v/verbose merge: Go's flag.Visit reports a bool flag as
 // visited even when it's explicitly set to its own zero value, so
 // "-v=false" on the command line must still be treated as an explicit
 // override of the config file's "verbose": true - not indistinguishable
 // from -v simply not being passed at all.
-func TestRun_Backtest_Config_ExplicitFalseOverridesFileVerbose(t *testing.T) {
+func TestRunCLI_Backtest_Config_ExplicitFalseOverridesFileVerbose(t *testing.T) {
 	chdirToRepoRoot(t)
 
 	configPath := writeConfigFile(t, `{
@@ -815,7 +813,7 @@ func TestRun_Backtest_Config_ExplicitFalseOverridesFileVerbose(t *testing.T) {
 	}`)
 
 	output := captureStdout(t, func() {
-		err := run([]string{"backtest", "-config", configPath, "-v=false"})
+		err := RunCLI([]string{"backtest", "-config", configPath, "-v=false"})
 		if err != nil {
 			t.Fatalf("run: %v", err)
 		}
@@ -826,11 +824,11 @@ func TestRun_Backtest_Config_ExplicitFalseOverridesFileVerbose(t *testing.T) {
 	}
 }
 
-// TestRun_Compare_Config_BuyAndHoldChallengerRejected asserts the
-// baseline-collision check (see TestRun_Compare_BuyAndHoldChallengerRejected)
+// TestRunCLI_Compare_Config_BuyAndHoldChallengerRejected asserts the
+// baseline-collision check (see TestRunCLI_Compare_BuyAndHoldChallengerRejected)
 // still applies when -strategy comes from the config file rather than the
 // flag, proving the check runs against the merged effective value.
-func TestRun_Compare_Config_BuyAndHoldChallengerRejected(t *testing.T) {
+func TestRunCLI_Compare_Config_BuyAndHoldChallengerRejected(t *testing.T) {
 	configPath := writeConfigFile(t, `{
 		"asset": "PETR4",
 		"start": "2010-01-01",
@@ -839,17 +837,17 @@ func TestRun_Compare_Config_BuyAndHoldChallengerRejected(t *testing.T) {
 		"strategy": "buy-and-hold"
 	}`)
 
-	err := run([]string{"compare", "-config", configPath})
+	err := RunCLI([]string{"compare", "-config", configPath})
 	if err == nil {
 		t.Fatal("expected error when config file's challenger strategy is buy-and-hold")
 	}
 }
 
-// TestRun_Compare_Config_StrategyParams mirrors
-// TestRun_Backtest_Config_StrategyParams for runCompare: the config file's
+// TestRunCLI_Compare_Config_StrategyParams mirrors
+// TestRunCLI_Backtest_Config_StrategyParams for runCompare: the config file's
 // "strategyParams" must reach the challenger's strategies.LoadStrategy
 // call, not just runBacktest's.
-func TestRun_Compare_Config_StrategyParams(t *testing.T) {
+func TestRunCLI_Compare_Config_StrategyParams(t *testing.T) {
 	chdirToRepoRoot(t)
 
 	configPath := writeConfigFile(t, `{
@@ -862,7 +860,7 @@ func TestRun_Compare_Config_StrategyParams(t *testing.T) {
 	}`)
 
 	output := captureStdout(t, func() {
-		err := run([]string{"compare", "-config", configPath})
+		err := RunCLI([]string{"compare", "-config", configPath})
 		if err != nil {
 			t.Fatalf("run: %v", err)
 		}
@@ -873,32 +871,32 @@ func TestRun_Compare_Config_StrategyParams(t *testing.T) {
 	}
 }
 
-func TestRun_Info_MissingAsset(t *testing.T) {
-	err := run([]string{"info"})
+func TestRunCLI_Info_MissingAsset(t *testing.T) {
+	err := RunCLI([]string{"info"})
 	if err == nil {
 		t.Fatal("expected error for missing asset")
 	}
 }
 
-func TestRun_Info_UnknownAsset(t *testing.T) {
-	err := run([]string{"info", "-asset", "DOESNOTEXIST9"})
+func TestRunCLI_Info_UnknownAsset(t *testing.T) {
+	err := RunCLI([]string{"info", "-asset", "DOESNOTEXIST9"})
 	if err == nil {
 		t.Fatal("expected error for unknown asset")
 	}
 }
 
-func TestRun_Info_InvalidFlag(t *testing.T) {
-	err := run([]string{"info", "-not-a-real-flag"})
+func TestRunCLI_Info_InvalidFlag(t *testing.T) {
+	err := RunCLI([]string{"info", "-not-a-real-flag"})
 	if err == nil {
 		t.Fatal("expected error for unknown flag")
 	}
 }
 
-func TestRun_Info_Valid(t *testing.T) {
+func TestRunCLI_Info_Valid(t *testing.T) {
 	chdirToRepoRoot(t)
 
 	output := captureStdout(t, func() {
-		err := run([]string{"info", "-asset", "PETR4"})
+		err := RunCLI([]string{"info", "-asset", "PETR4"})
 		if err != nil {
 			t.Fatalf("run: %v", err)
 		}

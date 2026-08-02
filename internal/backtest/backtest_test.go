@@ -58,7 +58,7 @@ func (s *stubStopLoss) Check(candle domain.Candle, position domain.Position) *do
 	return s.check(candle, position)
 }
 
-func TestCompileResult_ProfitAndEndingBalance(t *testing.T) {
+func TestNewResult_ProfitAndEndingBalance(t *testing.T) {
 	operations := []domain.Operation{
 		{
 			Date:      "2010-01-04",
@@ -67,9 +67,9 @@ func TestCompileResult_ProfitAndEndingBalance(t *testing.T) {
 		},
 	}
 
-	result, err := compileResult("Stub", operations, newMoney(5000))
+	result, err := NewResult("Stub", operations, newMoney(5000))
 	if err != nil {
-		t.Fatalf("compileResult: %v", err)
+		t.Fatalf("NewResult: %v", err)
 	}
 
 	if result.StrategyName != "Stub" {
@@ -95,18 +95,18 @@ func TestCompileResult_ProfitAndEndingBalance(t *testing.T) {
 		t.Errorf("Gains=%d Losses=%d, want Gains=1 Losses=0", result.Gains, result.Losses)
 	}
 	// profit 3000 / starting 5000 * 100
-	if !approxEqual(result.ProfitPercentage, 60) {
-		t.Errorf("ProfitPercentage = %v, want 60", result.ProfitPercentage)
+	if !approxEqual(result.ProfitPercentage(), 60) {
+		t.Errorf("ProfitPercentage = %v, want 60", result.ProfitPercentage())
 	}
-	if !approxEqual(result.WinRate, 100) {
-		t.Errorf("WinRate = %v, want 100", result.WinRate)
+	if !approxEqual(result.WinRate(), 100) {
+		t.Errorf("WinRate = %v, want 100", result.WinRate())
 	}
 }
 
-func TestCompileResult_NoOperationsBreaksEven(t *testing.T) {
-	result, err := compileResult("Stub", nil, newMoney(5000))
+func TestNewResult_NoOperationsBreaksEven(t *testing.T) {
+	result, err := NewResult("Stub", nil, newMoney(5000))
 	if err != nil {
-		t.Fatalf("compileResult: %v", err)
+		t.Fatalf("NewResult: %v", err)
 	}
 
 	if len(result.Operations) != 0 {
@@ -124,21 +124,22 @@ func TestCompileResult_NoOperationsBreaksEven(t *testing.T) {
 	if result.Gains != 0 || result.Losses != 0 {
 		t.Errorf("Gains=%d Losses=%d, want both 0", result.Gains, result.Losses)
 	}
-	if result.ProfitPercentage != 0 {
-		t.Errorf("ProfitPercentage = %v, want 0", result.ProfitPercentage)
+	if result.ProfitPercentage() != 0 {
+		t.Errorf("ProfitPercentage = %v, want 0", result.ProfitPercentage())
 	}
-	if result.WinRate != 0 {
-		t.Errorf("WinRate = %v, want 0", result.WinRate)
+	if result.WinRate() != 0 {
+		t.Errorf("WinRate = %v, want 0", result.WinRate())
 	}
-	if result.MaxDrawdownPercentage != 0 {
-		t.Errorf("MaxDrawdownPercentage = %v, want 0 (no operations)", result.MaxDrawdownPercentage)
+	if result.MaxDrawdownPercentage() != 0 {
+		t.Errorf("MaxDrawdownPercentage = %v, want 0 (no operations)", result.MaxDrawdownPercentage())
 	}
-	if !result.MaxDrawdownAmount.IsZero() {
-		t.Errorf("MaxDrawdownAmount = %d, want 0 (no operations)", result.MaxDrawdownAmount.Amount())
+	maxDrawdownAmount := result.MaxDrawdownAmount()
+	if !maxDrawdownAmount.IsZero() {
+		t.Errorf("MaxDrawdownAmount = %d, want 0 (no operations)", maxDrawdownAmount.Amount())
 	}
 }
 
-func TestCompileResult_ZeroStartingBalanceDoesNotPanic(t *testing.T) {
+func TestNewResult_ZeroStartingBalanceDoesNotPanic(t *testing.T) {
 	operations := []domain.Operation{
 		{
 			BuyOrder:  domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Buy},
@@ -146,16 +147,16 @@ func TestCompileResult_ZeroStartingBalanceDoesNotPanic(t *testing.T) {
 		},
 	}
 
-	result, err := compileResult("Stub", operations, newMoney(0))
+	result, err := NewResult("Stub", operations, newMoney(0))
 	if err != nil {
-		t.Fatalf("compileResult: %v", err)
+		t.Fatalf("NewResult: %v", err)
 	}
-	if result.ProfitPercentage != 0 {
-		t.Errorf("ProfitPercentage = %v, want 0 (zero starting balance)", result.ProfitPercentage)
+	if result.ProfitPercentage() != 0 {
+		t.Errorf("ProfitPercentage = %v, want 0 (zero starting balance)", result.ProfitPercentage())
 	}
 }
 
-func TestCompileResult_Loss(t *testing.T) {
+func TestNewResult_Loss(t *testing.T) {
 	operations := []domain.Operation{
 		{
 			BuyOrder:  domain.Order{Price: newMoney(2000), Quantity: 5, OrderType: domain.Buy},
@@ -163,9 +164,9 @@ func TestCompileResult_Loss(t *testing.T) {
 		},
 	}
 
-	result, err := compileResult("Stub", operations, newMoney(10000))
+	result, err := NewResult("Stub", operations, newMoney(10000))
 	if err != nil {
-		t.Fatalf("compileResult: %v", err)
+		t.Fatalf("NewResult: %v", err)
 	}
 
 	// bought 5 @ 2000 = 10000, sold 5 @ 1000 = 5000, profit = -5000
@@ -182,15 +183,15 @@ func TestCompileResult_Loss(t *testing.T) {
 		t.Errorf("Gains=%d Losses=%d, want Gains=0 Losses=1", result.Gains, result.Losses)
 	}
 	// profit -5000 / starting 10000 * 100
-	if !approxEqual(result.ProfitPercentage, -50) {
-		t.Errorf("ProfitPercentage = %v, want -50", result.ProfitPercentage)
+	if !approxEqual(result.ProfitPercentage(), -50) {
+		t.Errorf("ProfitPercentage = %v, want -50", result.ProfitPercentage())
 	}
-	if !approxEqual(result.WinRate, 0) {
-		t.Errorf("WinRate = %v, want 0", result.WinRate)
+	if !approxEqual(result.WinRate(), 0) {
+		t.Errorf("WinRate = %v, want 0", result.WinRate())
 	}
 }
 
-func TestCompileResult_MixedGainsAndLossesWithBreakEvenCountedAsGain(t *testing.T) {
+func TestNewResult_MixedGainsAndLossesWithBreakEvenCountedAsGain(t *testing.T) {
 	operations := []domain.Operation{
 		{ // gain: +1000
 			BuyOrder:  domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Buy},
@@ -210,9 +211,9 @@ func TestCompileResult_MixedGainsAndLossesWithBreakEvenCountedAsGain(t *testing.
 		},
 	}
 
-	result, err := compileResult("Stub", operations, newMoney(10000))
+	result, err := NewResult("Stub", operations, newMoney(10000))
 	if err != nil {
-		t.Fatalf("compileResult: %v", err)
+		t.Fatalf("NewResult: %v", err)
 	}
 
 	if result.TotalOperations != 4 {
@@ -225,15 +226,15 @@ func TestCompileResult_MixedGainsAndLossesWithBreakEvenCountedAsGain(t *testing.
 		t.Errorf("Losses = %d, want 1", result.Losses)
 	}
 	// 3 gains out of 4 operations
-	if !approxEqual(result.WinRate, 75) {
-		t.Errorf("WinRate = %v, want 75", result.WinRate)
+	if !approxEqual(result.WinRate(), 75) {
+		t.Errorf("WinRate = %v, want 75", result.WinRate())
 	}
 }
 
 // TestCompileResult_MaxDrawdown_BalanceOnlyIncreasesIsZero checks that a
 // balance that only ever climbs (a new peak after every operation) never
 // registers a drawdown.
-func TestCompileResult_MaxDrawdown_BalanceOnlyIncreasesIsZero(t *testing.T) {
+func TestNewResult_MaxDrawdown_BalanceOnlyIncreasesIsZero(t *testing.T) {
 	operations := []domain.Operation{
 		{ // +1000
 			BuyOrder:  domain.Order{Price: newMoney(1000), Quantity: 1, OrderType: domain.Buy},
@@ -245,15 +246,16 @@ func TestCompileResult_MaxDrawdown_BalanceOnlyIncreasesIsZero(t *testing.T) {
 		},
 	}
 
-	result, err := compileResult("Stub", operations, newMoney(10000))
+	result, err := NewResult("Stub", operations, newMoney(10000))
 	if err != nil {
-		t.Fatalf("compileResult: %v", err)
+		t.Fatalf("NewResult: %v", err)
 	}
-	if result.MaxDrawdownPercentage != 0 {
-		t.Errorf("MaxDrawdownPercentage = %v, want 0 (balance only ever increased)", result.MaxDrawdownPercentage)
+	if result.MaxDrawdownPercentage() != 0 {
+		t.Errorf("MaxDrawdownPercentage = %v, want 0 (balance only ever increased)", result.MaxDrawdownPercentage())
 	}
-	if !result.MaxDrawdownAmount.IsZero() {
-		t.Errorf("MaxDrawdownAmount = %d, want 0 (balance only ever increased)", result.MaxDrawdownAmount.Amount())
+	maxDrawdownAmount := result.MaxDrawdownAmount()
+	if !maxDrawdownAmount.IsZero() {
+		t.Errorf("MaxDrawdownAmount = %d, want 0 (balance only ever increased)", maxDrawdownAmount.Amount())
 	}
 }
 
@@ -262,7 +264,7 @@ func TestCompileResult_MaxDrawdown_BalanceOnlyIncreasesIsZero(t *testing.T) {
 // partially recovers without setting a new peak - the drawdown should be
 // measured from the peak to the trough, not affected by the partial
 // recovery.
-func TestCompileResult_MaxDrawdown_PeakThenTroughThenPartialRecovery(t *testing.T) {
+func TestNewResult_MaxDrawdown_PeakThenTroughThenPartialRecovery(t *testing.T) {
 	operations := []domain.Operation{
 		{ // +5000: 10000 -> 15000 (new peak)
 			BuyOrder:  domain.Order{Price: newMoney(10000), Quantity: 1, OrderType: domain.Buy},
@@ -278,17 +280,18 @@ func TestCompileResult_MaxDrawdown_PeakThenTroughThenPartialRecovery(t *testing.
 		},
 	}
 
-	result, err := compileResult("Stub", operations, newMoney(10000))
+	result, err := NewResult("Stub", operations, newMoney(10000))
 	if err != nil {
-		t.Fatalf("compileResult: %v", err)
+		t.Fatalf("NewResult: %v", err)
 	}
 	// (15000 - 12000) / 15000 * 100
-	if !approxEqual(result.MaxDrawdownPercentage, 20) {
-		t.Errorf("MaxDrawdownPercentage = %v, want 20", result.MaxDrawdownPercentage)
+	if !approxEqual(result.MaxDrawdownPercentage(), 20) {
+		t.Errorf("MaxDrawdownPercentage = %v, want 20", result.MaxDrawdownPercentage())
 	}
 	// 15000 (peak) - 12000 (trough)
-	if result.MaxDrawdownAmount.Amount() != 3000 {
-		t.Errorf("MaxDrawdownAmount = %d, want 3000", result.MaxDrawdownAmount.Amount())
+	maxDrawdownAmount := result.MaxDrawdownAmount()
+	if maxDrawdownAmount.Amount() != 3000 {
+		t.Errorf("MaxDrawdownAmount = %d, want 3000", maxDrawdownAmount.Amount())
 	}
 }
 
@@ -296,7 +299,7 @@ func TestCompileResult_MaxDrawdown_PeakThenTroughThenPartialRecovery(t *testing.
 // with several distinct peak/trough cycles of different sizes, the reported
 // MaxDrawdownPercentage is the largest one encountered - not the first one
 // and not the last one.
-func TestCompileResult_MaxDrawdown_PicksLargestOfSeveralDrawdowns(t *testing.T) {
+func TestNewResult_MaxDrawdown_PicksLargestOfSeveralDrawdowns(t *testing.T) {
 	operations := []domain.Operation{
 		{ // +5000: 10000 -> 15000 (peak)
 			BuyOrder:  domain.Order{Price: newMoney(10000), Quantity: 1, OrderType: domain.Buy},
@@ -324,18 +327,19 @@ func TestCompileResult_MaxDrawdown_PicksLargestOfSeveralDrawdowns(t *testing.T) 
 		},
 	}
 
-	result, err := compileResult("Stub", operations, newMoney(10000))
+	result, err := NewResult("Stub", operations, newMoney(10000))
 	if err != nil {
-		t.Fatalf("compileResult: %v", err)
+		t.Fatalf("NewResult: %v", err)
 	}
 	// (17500 - 10500) / 17500 * 100
-	if !approxEqual(result.MaxDrawdownPercentage, 40) {
-		t.Errorf("MaxDrawdownPercentage = %v, want 40 (the largest drawdown, not the first ~10%% or the last ~25.7%%)", result.MaxDrawdownPercentage)
+	if !approxEqual(result.MaxDrawdownPercentage(), 40) {
+		t.Errorf("MaxDrawdownPercentage = %v, want 40 (the largest drawdown, not the first ~10%% or the last ~25.7%%)", result.MaxDrawdownPercentage())
 	}
 	// 17500 (peak) - 10500 (trough), the largest drawdown - not the first
 	// (1500, ~10%) or the last (500, ~25.7%)
-	if result.MaxDrawdownAmount.Amount() != 7000 {
-		t.Errorf("MaxDrawdownAmount = %d, want 7000 (the largest drawdown)", result.MaxDrawdownAmount.Amount())
+	maxDrawdownAmount := result.MaxDrawdownAmount()
+	if maxDrawdownAmount.Amount() != 7000 {
+		t.Errorf("MaxDrawdownAmount = %d, want 7000 (the largest drawdown)", maxDrawdownAmount.Amount())
 	}
 }
 

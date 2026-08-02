@@ -48,7 +48,7 @@ type ScanResult struct {
 	Asset      string
 	Baseline   *Result
 	Challenger *Result
-	// Delta is Challenger.ProfitPercentage - Baseline.ProfitPercentage.
+	// Delta is Challenger.ProfitPercentage() - Baseline.ProfitPercentage().
 	Delta float64
 	// Won is Delta > 0 (strictly - a tie is not a win).
 	Won bool
@@ -148,7 +148,7 @@ func scanOne(asset string, params ScanParams) ScanResult {
 		return ScanResult{Asset: asset, Err: err}
 	}
 
-	delta := challengerResult.ProfitPercentage - baselineResult.ProfitPercentage
+	delta := challengerResult.ProfitPercentage() - baselineResult.ProfitPercentage()
 	return ScanResult{
 		Asset:      asset,
 		Baseline:   baselineResult,

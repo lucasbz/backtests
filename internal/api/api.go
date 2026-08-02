@@ -338,8 +338,8 @@ func toScanResultJSON(r backtest.ScanResult) scanResultJSON {
 		return scanResultJSON{Asset: r.Asset, Error: &errMsg}
 	}
 
-	baselinePct := r.Baseline.ProfitPercentage
-	challengerPct := r.Challenger.ProfitPercentage
+	baselinePct := r.Baseline.ProfitPercentage()
+	challengerPct := r.Challenger.ProfitPercentage()
 	challengerOps := r.Challenger.TotalOperations
 	delta := r.Delta
 	won := r.Won

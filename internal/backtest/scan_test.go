@@ -84,7 +84,7 @@ func TestScan_MatchesSequentialBacktest(t *testing.T) {
 		assertResultsEqual(t, asset+" baseline", scanResult.Baseline, wantBaseline)
 		assertResultsEqual(t, asset+" challenger", scanResult.Challenger, wantChallenger)
 
-		wantDelta := wantChallenger.ProfitPercentage - wantBaseline.ProfitPercentage
+		wantDelta := wantChallenger.ProfitPercentage() - wantBaseline.ProfitPercentage()
 		if !approxEqual(scanResult.Delta, wantDelta) {
 			t.Errorf("%s: Delta = %v, want %v", asset, scanResult.Delta, wantDelta)
 		}
@@ -105,14 +105,14 @@ func assertResultsEqual(t *testing.T, label string, got, want *Result) {
 	if got.Gains != want.Gains || got.Losses != want.Losses {
 		t.Errorf("%s: Gains/Losses = %d/%d, want %d/%d", label, got.Gains, got.Losses, want.Gains, want.Losses)
 	}
-	if !approxEqual(got.ProfitPercentage, want.ProfitPercentage) {
-		t.Errorf("%s: ProfitPercentage = %v, want %v", label, got.ProfitPercentage, want.ProfitPercentage)
+	if !approxEqual(got.ProfitPercentage(), want.ProfitPercentage()) {
+		t.Errorf("%s: ProfitPercentage = %v, want %v", label, got.ProfitPercentage(), want.ProfitPercentage())
 	}
 	if got.EndingBalance.Amount() != want.EndingBalance.Amount() {
 		t.Errorf("%s: EndingBalance = %d, want %d", label, got.EndingBalance.Amount(), want.EndingBalance.Amount())
 	}
-	if !approxEqual(got.MaxDrawdownPercentage, want.MaxDrawdownPercentage) {
-		t.Errorf("%s: MaxDrawdownPercentage = %v, want %v", label, got.MaxDrawdownPercentage, want.MaxDrawdownPercentage)
+	if !approxEqual(got.MaxDrawdownPercentage(), want.MaxDrawdownPercentage()) {
+		t.Errorf("%s: MaxDrawdownPercentage = %v, want %v", label, got.MaxDrawdownPercentage(), want.MaxDrawdownPercentage())
 	}
 }
 

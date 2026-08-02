@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"flag"
@@ -13,23 +13,39 @@ import (
 	"github.com/lucasbz/backtests/internal/strategies"
 )
 
-func runBacktest(args []string) error {
+func RunCLI(args []string) error {
+	switch args[0] {
+	case "backtest":
+		return RunBacktest(args[1:])
+	case "compare":
+		return RunCompare(args[1:])
+	case "scan":
+		return RunScan(args[1:])
+	case "info":
+		return RunInfo(args[1:])
+	default:
+		return fmt.Errorf("unknown command %q, want backtest, compare, scan, info or serve", args[0])
+	}
+}
+
+func RunBacktest(args []string) error {
 	fs := flag.NewFlagSet("backtest", flag.ContinueOnError)
 
+	configPath := fs.String("config", "", configFlagUsage)
 	asset := fs.String("asset", "", "asset (ticker) to backtest (e.g. PETR4)")
 	start := fs.String("start", "", "timeframe start date (YYYY-MM-DD)")
 	end := fs.String("end", "", "timeframe end date (YYYY-MM-DD)")
 	balance := fs.String("balance", "", "starting cash balance (e.g. 10000.00)")
 	verbose := fs.Bool("v", false, "print each buy/sell operation")
-	configPath := fs.String("config", "", configFlagUsage)
-
 	strategyName := fs.String("strategy", "", fmt.Sprintf("strategy to run: %s", strategies.AvailableStrategyNames()))
+
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
 	assetVal, startVal, endVal, balanceVal, strategyVal, verboseVal := *asset, *start, *end, *balance, *strategyName, *verbose
 	var strategyParamsVal map[string]float64
+
 	if *configPath != "" {
 		cfg, err := loadConfig(*configPath)
 		if err != nil {
@@ -84,12 +100,13 @@ func runBacktest(args []string) error {
 }
 
 func printResult(asset string, start, end time.Time, result *backtest.Result, verbose bool) {
+	maxDrawdownAmount := result.MaxDrawdownAmount()
 	fmt.Printf(
 		"Running Backtest for: %s %s to %s | Strategy: %s | Balance: %s -> %s (Profit: %s, %.2f%%) | G/L/T: %d/%d/%d (WR: %.2f%%) | Max DD: %s (%.2f%%)\n",
 		asset, start.Format("2006-01-02"), end.Format("2006-01-02"), result.StrategyName,
-		result.StartingBalance.Display(), result.EndingBalance.Display(), result.Profit.Display(), result.ProfitPercentage,
-		result.Gains, result.Losses, result.TotalOperations, result.WinRate,
-		result.MaxDrawdownAmount.Display(), result.MaxDrawdownPercentage,
+		result.StartingBalance.Display(), result.EndingBalance.Display(), result.Profit.Display(), result.ProfitPercentage(),
+		result.Gains, result.Losses, result.TotalOperations, result.WinRate(),
+		maxDrawdownAmount.Display(), result.MaxDrawdownPercentage(),
 	)
 
 	if verbose {
@@ -97,12 +114,6 @@ func printResult(asset string, start, end time.Time, result *backtest.Result, ve
 	}
 }
 
-// printOperations prints one row per operation as an aligned table (# | buy
-// date/price | sell date/price | days held | qty | profit). There's a
-// single Qty column rather than separate buy/sell quantities since partial
-// exits aren't supported - buy and sell quantity are always equal for an
-// operation. Profit's sign alone conveys gain/loss, so there's no separate
-// outcome column either.
 func printOperations(operations []domain.Operation) {
 	if len(operations) == 0 {
 		fmt.Println("Operations: none")
@@ -134,17 +145,9 @@ func printOperations(operations []domain.Operation) {
 	w.Flush()
 }
 
-// baselineStrategyName is the -strategy value reserved for the fixed
-// baseline runCompare always runs, mirroring
-// frontend/src/components/StrategyComparison.tsx's BUY_AND_HOLD constant.
 const baselineStrategyName = "buy-and-hold"
 
-// runCompare runs two backtests over the same asset/timeframe/balance: a
-// fixed Buy & Hold baseline, and a user-chosen "challenger" strategy, then
-// prints both results side by side along with a one-line summary of which
-// one won. It's the CLI counterpart of StrategyComparison.tsx in the web
-// frontend.
-func runCompare(args []string) error {
+func RunCompare(args []string) error {
 	fs := flag.NewFlagSet("compare", flag.ContinueOnError)
 
 	asset := fs.String("asset", "", "asset (ticker) to backtest (e.g. PETR4)")
@@ -252,7 +255,7 @@ func runCompare(args []string) error {
 // ProfitPercentage is what's already displayed per-result by printResult,
 // so the summary reads consistently with the two lines above it.
 func printComparisonSummary(baseline, challenger *backtest.Result) {
-	diff := challenger.ProfitPercentage - baseline.ProfitPercentage
+	diff := challenger.ProfitPercentage() - baseline.ProfitPercentage()
 	switch {
 	case diff > 0:
 		fmt.Printf("Result: Challenger outperformed baseline by %.2f percentage points\n", diff)
@@ -263,13 +266,13 @@ func printComparisonSummary(baseline, challenger *backtest.Result) {
 	}
 }
 
-// runScan runs a single "challenger" strategy against every available
+// RunScan runs a single "challenger" strategy against every available
 // asset (optionally restricted to -year), each compared against a Buy &
 // Hold baseline, via backtest.Scan - the CLI counterpart of
 // POST /api/scan, and the batch/many-assets sibling of runCompare (which
 // does the same comparison for a single asset). Flags mirror runCompare's,
 // minus -asset (a scan runs every asset, not one) plus -year.
-func runScan(args []string) error {
+func RunScan(args []string) error {
 	fs := flag.NewFlagSet("scan", flag.ContinueOnError)
 
 	start := fs.String("start", "", "timeframe start date (YYYY-MM-DD)")
@@ -384,7 +387,7 @@ func printScanResults(results []backtest.ScanResult, strategyVal string, verbose
 		}
 		fmt.Fprintf(
 			w, "%s\t%.2f\t%.2f\t%+.2f\t%s\n",
-			r.Asset, r.Baseline.ProfitPercentage, r.Challenger.ProfitPercentage, r.Delta, wonStr,
+			r.Asset, r.Baseline.ProfitPercentage(), r.Challenger.ProfitPercentage(), r.Delta, wonStr,
 		)
 	}
 	w.Flush()
@@ -417,7 +420,7 @@ func printScanResults(results []backtest.ScanResult, strategyVal string, verbose
 	}
 }
 
-func runInfo(args []string) error {
+func RunInfo(args []string) error {
 	fs := flag.NewFlagSet("info", flag.ContinueOnError)
 	asset := fs.String("asset", "", "asset (ticker) to look up (e.g. PETR4)")
 	if err := fs.Parse(args); err != nil {

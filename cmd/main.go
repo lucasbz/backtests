@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/lucasbz/backtests/internal/api"
+	"github.com/lucasbz/backtests/internal/cli"
 )
 
 func main() {
@@ -22,19 +23,10 @@ func run(args []string) error {
 		return fmt.Errorf("usage: backtests <backtest|compare|scan|info|serve> [flags]")
 	}
 
-	switch args[0] {
-	case "backtest":
-		return runBacktest(args[1:])
-	case "compare":
-		return runCompare(args[1:])
-	case "scan":
-		return runScan(args[1:])
-	case "info":
-		return runInfo(args[1:])
-	case "serve":
+	if args[0] == "serve" {
 		return serve(args[1:])
-	default:
-		return fmt.Errorf("unknown command %q, want backtest, compare, scan, info or serve", args[0])
+	} else {
+		return cli.RunCLI(args)
 	}
 }
 

@@ -49,33 +49,15 @@ var availableStrategies = map[string]func(params map[string]float64) (domain.Str
 	},
 }
 
-// StrategyParam describes one parameter a strategy's constructor expects,
-// for a UI to render an appropriately-labeled input. It is a UI hint only,
-// not the source of truth for validation - the constructor (see
-// newCrossoverStrategy/newRSIThreshold) is still what actually enforces
-// correctness, including cross-field rules a flat per-param Min/Max can't
-// express (e.g. shortPeriod < longPeriod, oversold < overbought). Those
-// still surface as a normal 400 from POST /api/backtest, shown the same way
-// any other backtest error already is today.
 type StrategyParam struct {
-	// Key is the key expected in strategyParams, e.g. "shortPeriod".
-	Key string `json:"key"`
-	// Label is a human-readable label, e.g. "Short period".
-	Label string `json:"label"`
-	// Default is a sensible prefilled value.
-	Default float64 `json:"default"`
-	// Min is the inclusive lower bound, for the input's min attribute.
-	Min float64 `json:"min"`
-	// Max is the inclusive upper bound, omitted from JSON (not null) when
-	// unbounded.
-	Max *float64 `json:"max,omitempty"`
-	// Step is the input step attribute, e.g. 1 for a period.
-	Step float64 `json:"step"`
+	Key     string   `json:"key"`
+	Label   string   `json:"label"`
+	Default float64  `json:"default"`
+	Min     float64  `json:"min"`
+	Max     *float64 `json:"max,omitempty"`
+	Step    float64  `json:"step"`
 }
 
-// StrategyInfo is one entry in GET /api/strategies' response: a strategy's
-// name plus what params (if any) it expects. Params is [] (never null),
-// for strategies that take none (e.g. buy-and-hold).
 type StrategyInfo struct {
 	Name   string          `json:"name"`
 	Params []StrategyParam `json:"params"`

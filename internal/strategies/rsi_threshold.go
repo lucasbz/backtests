@@ -7,10 +7,6 @@ import (
 	"github.com/lucasbz/backtests/internal/indicators"
 )
 
-// RSIThreshold buys, while flat, when RSI crosses below its configured
-// oversold threshold, and sells, while holding, when RSI crosses above its
-// configured overbought threshold - a single-indicator, two-threshold
-// shape, distinct from crossoverStrategy's two-indicator shape.
 type RSIThreshold struct {
 	rsi                indicators.Indicator
 	oversold           float64
@@ -19,9 +15,6 @@ type RSIThreshold struct {
 	wasAboveOverbought *bool
 }
 
-// newRSIThreshold builds an RSIThreshold from params' "period",
-// "oversold" and "overbought" keys. oversold and overbought must each be
-// in [0, 100], with oversold strictly less than overbought.
 func newRSIThreshold(params map[string]float64) (domain.Strategy, error) {
 	period, ok := params["period"]
 	if !ok {

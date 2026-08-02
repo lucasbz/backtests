@@ -1,7 +1,6 @@
 package backtest
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -21,78 +20,7 @@ type Backtest struct {
 	End      time.Time
 	Balance  money.Money
 	Strategy domain.Strategy
-	// StopLoss is optional risk control, raced against Strategy.Decide each
-	// candle a position is open: whichever fires first closes the
-	// position, with StopLoss winning ties (see pickExit). nil means no
-	// stop-loss - existing callers get exactly the behavior they had before
-	// StopLoss existed.
 	StopLoss domain.StopLoss
-}
-
-// Result summarizes the outcome of a Backtest.Run: every operation the
-// strategy produced, and how the balance moved because of them.
-type Result struct {
-	StrategyName    string
-	Operations      []domain.Operation
-	StartingBalance money.Money
-	EndingBalance   money.Money
-	Profit          money.Money
-	TotalOperations int
-	Gains           int
-	Losses          int
-
-	// ProfitPercentage is Profit relative to StartingBalance (e.g. 12.5 for
-	// a 12.5% return). Display-only, like money.Money.AsMajorUnits.
-	ProfitPercentage float64
-	// WinRate is the share of operations that were gains, e.g. 66.67 for 2
-	// out of 3.
-	WinRate float64
-	// MaxDrawdownPercentage is the largest peak-to-trough decline in balance
-	// across the operations, as a percentage of the peak (e.g. 15.23 for a
-	// 15.23% drawdown). Zero if the balance never declined below a prior
-	// peak (including when there are no operations).
-	MaxDrawdownPercentage float64
-	// MaxDrawdownAmount is the largest peak-to-trough decline in balance
-	// across the operations, in absolute currency terms (always
-	// non-negative). Zero under the same conditions as
-	// MaxDrawdownPercentage.
-	MaxDrawdownAmount money.Money
-}
-
-// resultJSON mirrors Result but with money.Money fields converted to plain
-// JSON numbers (see domain.Candle's candleJSON for the same pattern), and
-// Operations marked omitempty so API callers can drop it (e.g. when the
-// caller didn't ask for verbose output) by nil-ing it out before marshaling.
-type resultJSON struct {
-	StrategyName          string             `json:"strategyName"`
-	StartingBalance       float64            `json:"startingBalance"`
-	EndingBalance         float64            `json:"endingBalance"`
-	Profit                float64            `json:"profit"`
-	ProfitPercentage      float64            `json:"profitPercentage"`
-	TotalOperations       int                `json:"totalOperations"`
-	Gains                 int                `json:"gains"`
-	Losses                int                `json:"losses"`
-	WinRate               float64            `json:"winRate"`
-	MaxDrawdownPercentage float64            `json:"maxDrawdownPercentage"`
-	MaxDrawdownAmount     float64            `json:"maxDrawdownAmount"`
-	Operations            []domain.Operation `json:"operations,omitempty"`
-}
-
-func (r Result) MarshalJSON() ([]byte, error) {
-	return json.Marshal(resultJSON{
-		StrategyName:          r.StrategyName,
-		StartingBalance:       r.StartingBalance.AsMajorUnits(),
-		EndingBalance:         r.EndingBalance.AsMajorUnits(),
-		Profit:                r.Profit.AsMajorUnits(),
-		ProfitPercentage:      r.ProfitPercentage,
-		TotalOperations:       r.TotalOperations,
-		Gains:                 r.Gains,
-		Losses:                r.Losses,
-		WinRate:               r.WinRate,
-		MaxDrawdownPercentage: r.MaxDrawdownPercentage,
-		MaxDrawdownAmount:     r.MaxDrawdownAmount.AsMajorUnits(),
-		Operations:            r.Operations,
-	})
 }
 
 // Run loads b.Asset's candles within [b.Start, b.End], in date order, then
@@ -110,7 +38,7 @@ func (b *Backtest) Run() (*Result, error) {
 		return nil, err
 	}
 
-	return compileResult(b.Strategy.Name(), operations, b.Balance)
+	return NewResult(b.Strategy.Name(), operations, b.Balance)
 }
 
 // traverse feeds candles to strategy one at a time, in order, tracking the
@@ -208,13 +136,24 @@ func pickExit(strategyExit, stopExit *domain.Order) *domain.Order {
 	return strategyExit
 }
 
-// compileResult turns a completed operations list into a Result, given the
+// NewResult turns a completed operations list into a Result, given the
 // strategy's display name and the backtest's starting balance: go over each
 // operation, adding its gain or loss to the running total profit and
 // balance, counting it as a gain or a loss, and tracking the running peak
-// balance to find the largest peak-to-trough decline (MaxDrawdownPercentage
-// and MaxDrawdownAmount).
-func compileResult(strategyName string, operations []domain.Operation, startingBalance money.Money) (*Result, error) {
+// balance to find the largest peak-to-trough decline
+// (maxDrawdownPercentage/maxDrawdownAmount, cached on Result - see its
+// MaxDrawdownPercentage/MaxDrawdownAmount methods - since Operations, which
+// this walk depends on, may be cleared by callers after the fact to trim
+// response payloads).
+//
+// This is the only way to construct a valid Result - both fields backing
+// MaxDrawdownPercentage/MaxDrawdownAmount are unexported, so a Result built
+// any other way (e.g. a struct literal from another package) can't set
+// them and would report a zero drawdown regardless of its Operations.
+// Callers that need a Result for a test, without going through a full
+// Backtest.Run(), should still call NewResult with real Operations rather
+// than fabricate one field at a time.
+func NewResult(strategyName string, operations []domain.Operation, startingBalance money.Money) (*Result, error) {
 	total := len(operations)
 
 	profit := money.New(0, domain.Currency)
@@ -270,16 +209,6 @@ func compileResult(strategyName string, operations []domain.Operation, startingB
 		}
 	}
 
-	var profitPercentage float64
-	if !startingBalance.IsZero() {
-		profitPercentage = profit.AsMajorUnits() / startingBalance.AsMajorUnits() * 100
-	}
-
-	var winRate float64
-	if total > 0 {
-		winRate = float64(gains) / float64(total) * 100
-	}
-
 	return &Result{
 		StrategyName:          strategyName,
 		Operations:            operations,
@@ -289,9 +218,7 @@ func compileResult(strategyName string, operations []domain.Operation, startingB
 		TotalOperations:       total,
 		Gains:                 gains,
 		Losses:                losses,
-		ProfitPercentage:      profitPercentage,
-		WinRate:               winRate,
-		MaxDrawdownPercentage: maxDrawdownPercentage,
-		MaxDrawdownAmount:     maxDrawdownAmount,
+		maxDrawdownPercentage: maxDrawdownPercentage,
+		maxDrawdownAmount:     maxDrawdownAmount,
 	}, nil
 }
