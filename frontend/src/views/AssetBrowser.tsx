@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AssetListPanel } from '../components/AssetListPanel';
 import { AssetInfoPanel } from '../components/AssetInfoPanel';
+import { CandlestickChart } from '../components/CandlestickChart';
 import { StrategyComparison } from '../components/StrategyComparison';
 import type { YearFilterValue } from '../components/YearFilter';
 import { useAssetInfo } from '../hooks/useAssetInfo';
@@ -87,6 +88,7 @@ export function AssetBrowser({ year, balance }: AssetBrowserProps) {
         {selectedAsset ? (
           <>
             <AssetInfoPanel info={info} loading={loading} error={error} />
+            <CandlestickChart asset={selectedAsset} start={info?.earliest} end={info?.latest} />
             <StrategyComparison
               asset={selectedAsset}
               defaultStart={defaultStart}

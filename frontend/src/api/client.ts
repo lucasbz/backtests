@@ -81,10 +81,28 @@ export function getAssets(year?: number): Promise<AssetsResponse> {
 
 // -- GET /api/strategies ---------------------------------------------------
 
-// Bare array of strategy name strings, sorted alphabetically (e.g.
-// `["buy-and-hold"]`).
-export function getStrategies(): Promise<string[]> {
-  return request<string[]>('/strategies');
+// One parameter a strategy's constructor expects, describing how a UI
+// should render an input for it. `max` is present only when the param has
+// an upper bound (absent, not `null`, otherwise).
+export interface StrategyParam {
+  key: string;
+  label: string;
+  default: number;
+  min: number;
+  max?: number;
+  step: number;
+}
+
+// A strategy's name plus what params (if any) it expects. `params` is `[]`
+// (never absent/null) for strategies that take none (e.g. `buy-and-hold`).
+export interface StrategyInfo {
+  name: string;
+  params: StrategyParam[];
+}
+
+// Array of per-strategy descriptors, sorted alphabetically by `name`.
+export function getStrategies(): Promise<StrategyInfo[]> {
+  return request<StrategyInfo[]>('/strategies');
 }
 
 // -- GET /api/stop-losses ---------------------------------------------------
@@ -113,6 +131,10 @@ export interface BacktestRequest {
   balance: string;
   // Omit entirely for no stop-loss (the default, unchanged behavior).
   stopLoss?: StopLossRequest;
+  // Required keys depend on `strategy` (see the params `GET /api/strategies`
+  // reports for it). Omit entirely for parameterless strategies (e.g.
+  // `buy-and-hold`, `two-candle-breakout`).
+  strategyParams?: Record<string, number>;
   verbose: boolean;
 }
 
@@ -150,4 +172,23 @@ export function runBacktest(payload: BacktestRequest): Promise<BacktestResult> {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+// -- GET /api/candles --------------------------------------------------------
+
+export interface Candle {
+  date: string; // YYYY-MM-DD
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  avg: number;
+  quantity: number;
+  volume: number;
+  trades: number;
+}
+
+export function getCandles(asset: string, start: string, end: string): Promise<Candle[]> {
+  const params = new URLSearchParams({ asset, start, end });
+  return request<Candle[]>(`/candles?${params.toString()}`);
 }

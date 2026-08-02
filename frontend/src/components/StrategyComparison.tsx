@@ -1,10 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
   ApiError,
   getStopLosses,
   getStrategies,
   runBacktest,
   type BacktestResult,
+  type StrategyInfo,
 } from '../api/client';
 import { BacktestResultCard } from './BacktestResultCard';
 import { BaselineResultCard } from './BaselineResultCard';
@@ -42,7 +43,7 @@ export function StrategyComparison({
   defaultEnd,
   balance,
 }: StrategyComparisonProps) {
-  const [strategies, setStrategies] = useState<string[]>([]);
+  const [strategies, setStrategies] = useState<StrategyInfo[]>([]);
   const [strategiesError, setStrategiesError] = useState<string | null>(null);
 
   const [stopLossTypes, setStopLossTypes] = useState<string[]>([]);
@@ -51,6 +52,14 @@ export function StrategyComparison({
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const [strategy, setStrategy] = useState('');
+
+  // Values for the currently-selected strategy's declared params (see
+  // `selectedStrategyInfo` below), keyed by param `key`. String, not
+  // number, same reasoning as `stopLossValue` - lets an input be
+  // legitimately empty rather than coerced to `0`. Reset to the newly
+  // selected strategy's declared defaults below whenever `strategy` (or the
+  // fetched `strategies` list) changes.
+  const [strategyParamValues, setStrategyParamValues] = useState<Record<string, string>>({});
 
   // Fields are always visible; leaving the value blank means "no
   // stop-loss" (matches the backend's "omitted stopLoss" behavior) - see
@@ -73,9 +82,9 @@ export function StrategyComparison({
         if (cancelled) return;
         // Buy & Hold is always run as the fixed baseline (see below), so it
         // is filtered out of the pickable list here.
-        const pickable = list.filter((name) => name !== BUY_AND_HOLD);
+        const pickable = list.filter((info) => info.name !== BUY_AND_HOLD);
         setStrategies(pickable);
-        setStrategy((current) => current || pickable[0] || '');
+        setStrategy((current) => current || pickable[0]?.name || '');
       })
       .catch((err) => {
         if (cancelled) return;
@@ -132,6 +141,26 @@ export function StrategyComparison({
     setEnd(defaultEnd ?? '');
   }, [asset, defaultStart, defaultEnd]);
 
+  const selectedStrategyInfo = strategies.find((info) => info.name === strategy);
+  // Memoized so this array keeps a stable reference across renders that
+  // don't actually change it (i.e. whenever `strategies`/`strategy` are
+  // unchanged), so the reset effect below can safely depend on it without
+  // re-firing every render.
+  const selectedStrategyParams = useMemo(
+    () => selectedStrategyInfo?.params ?? [],
+    [selectedStrategyInfo],
+  );
+
+  // Changing the selected strategy (or the strategies list finishing its
+  // fetch, which is when params first become known) resets the per-param
+  // inputs to that strategy's declared defaults - mirrors how selecting a
+  // new asset resets other form state in `AssetBrowser`'s effect.
+  useEffect(() => {
+    setStrategyParamValues(
+      Object.fromEntries(selectedStrategyParams.map((param) => [param.key, String(param.default)])),
+    );
+  }, [selectedStrategyParams]);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -155,9 +184,19 @@ export function StrategyComparison({
         ? { type: stopLossType, value: Number(stopLossValue) }
         : undefined;
 
+    // Only included for strategies that declare params - omitted entirely
+    // for parameterless ones, matching the API's "omit for parameterless
+    // strategies" contract.
+    const strategyParams =
+      selectedStrategyParams.length > 0
+        ? Object.fromEntries(
+            selectedStrategyParams.map((param) => [param.key, Number(strategyParamValues[param.key])]),
+          )
+        : undefined;
+
     const [baselineOutcome, challengerOutcome] = await Promise.allSettled([
       runBacktest({ ...sharedRequest, strategy: BUY_AND_HOLD }),
-      runBacktest({ ...sharedRequest, strategy, stopLoss }),
+      runBacktest({ ...sharedRequest, strategy, stopLoss, strategyParams }),
     ]);
 
     if (baselineOutcome.status === 'fulfilled') {
@@ -190,6 +229,8 @@ export function StrategyComparison({
     stopLossType,
     stopLossValue,
     loading,
+    strategyParams: selectedStrategyParams,
+    strategyParamValues,
   });
 
   return (
@@ -235,9 +276,9 @@ export function StrategyComparison({
             disabled={strategies.length === 0}
           >
             {strategies.length === 0 && <option value="">Loading…</option>}
-            {strategies.map((name) => (
-              <option key={name} value={name}>
-                {name}
+            {strategies.map((info) => (
+              <option key={info.name} value={info.name}>
+                {info.name}
               </option>
             ))}
           </select>
@@ -282,6 +323,32 @@ export function StrategyComparison({
             />
           </div>
         </div>
+
+        {selectedStrategyParams.map((param) => {
+          const inputId = `bt-strategy-param-${param.key}`;
+          return (
+            <div key={param.key} className="flex flex-col gap-1.5">
+              <label htmlFor={inputId} className="text-sm text-text">
+                {param.label}
+              </label>
+              <input
+                id={inputId}
+                type="number"
+                min={param.min}
+                max={param.max}
+                step={param.step}
+                className={fieldClasses}
+                value={strategyParamValues[param.key] ?? ''}
+                onChange={(event) =>
+                  setStrategyParamValues((current) => ({
+                    ...current,
+                    [param.key]: event.target.value,
+                  }))
+                }
+              />
+            </div>
+          );
+        })}
 
         <button type="submit" className={`${buttonPrimaryClasses} col-span-full justify-self-start`} disabled={!canSubmit}>
           {loading ? 'Running…' : 'Run comparison'}

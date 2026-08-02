@@ -2,7 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrategyComparison } from './StrategyComparison';
-import { ApiError, getStopLosses, getStrategies, runBacktest, type BacktestResult } from '../api/client';
+import {
+  ApiError,
+  getStopLosses,
+  getStrategies,
+  runBacktest,
+  type BacktestResult,
+  type StrategyInfo,
+} from '../api/client';
 
 vi.mock('../api/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/client')>();
@@ -39,6 +46,11 @@ function buildResult(overrides: Partial<BacktestResult> = {}): BacktestResult {
 /** Keeps the returned promise pending forever, to inspect pre-fetch state. */
 function pendingForever<T>(): Promise<T> {
   return new Promise<T>(() => {});
+}
+
+/** Builds a zero-param `StrategyInfo` for each given name. */
+function strategyInfos(...names: string[]): StrategyInfo[] {
+  return names.map((name) => ({ name, params: [] }));
 }
 
 function renderComparison(props: Partial<React.ComponentProps<typeof StrategyComparison>> = {}) {
@@ -87,7 +99,7 @@ describe('StrategyComparison', () => {
   });
 
   it('populates the strategy dropdown after fetching, excluding buy-and-hold', async () => {
-    mockedGetStrategies.mockResolvedValue(['bter', 'buy-and-hold', 'two-candle-breakout']);
+    mockedGetStrategies.mockResolvedValue(strategyInfos('bter', 'buy-and-hold', 'two-candle-breakout'));
     mockedGetStopLosses.mockResolvedValue(['fixed-amount', 'none', 'percent']);
 
     renderComparison();
@@ -103,7 +115,7 @@ describe('StrategyComparison', () => {
   });
 
   it('populates the stop-loss dropdown after fetching, defaulting the selection to "none"', async () => {
-    mockedGetStrategies.mockResolvedValue(['two-candle-breakout']);
+    mockedGetStrategies.mockResolvedValue(strategyInfos('two-candle-breakout'));
     mockedGetStopLosses.mockResolvedValue(['fixed-amount', 'none', 'percent']);
 
     renderComparison();
@@ -130,7 +142,7 @@ describe('StrategyComparison', () => {
   });
 
   it('keeps the trigger value field disabled while stop-loss type is "none", and enables it otherwise', async () => {
-    mockedGetStrategies.mockResolvedValue(['two-candle-breakout']);
+    mockedGetStrategies.mockResolvedValue(strategyInfos('two-candle-breakout'));
     mockedGetStopLosses.mockResolvedValue(['none', 'percent']);
     const user = userEvent.setup();
 
@@ -146,7 +158,7 @@ describe('StrategyComparison', () => {
   });
 
   it('disables submit until the required date fields are filled in', async () => {
-    mockedGetStrategies.mockResolvedValue(['two-candle-breakout']);
+    mockedGetStrategies.mockResolvedValue(strategyInfos('two-candle-breakout'));
     mockedGetStopLosses.mockResolvedValue(['none']);
 
     renderComparison({ defaultStart: undefined, defaultEnd: undefined });
@@ -163,7 +175,7 @@ describe('StrategyComparison', () => {
   });
 
   it('runs the baseline and challenger concurrently, defaulting stopLossType to "none" (no stopLoss sent)', async () => {
-    mockedGetStrategies.mockResolvedValue(['two-candle-breakout']);
+    mockedGetStrategies.mockResolvedValue(strategyInfos('two-candle-breakout'));
     mockedGetStopLosses.mockResolvedValue(['none', 'percent']);
     mockedRunBacktest.mockImplementation(async (payload) =>
       payload.strategy === 'buy-and-hold'
@@ -190,7 +202,7 @@ describe('StrategyComparison', () => {
   });
 
   it('applies the configured stop-loss only to the challenger request, never the baseline', async () => {
-    mockedGetStrategies.mockResolvedValue(['two-candle-breakout']);
+    mockedGetStrategies.mockResolvedValue(strategyInfos('two-candle-breakout'));
     mockedGetStopLosses.mockResolvedValue(['none', 'percent']);
     mockedRunBacktest.mockResolvedValue(buildResult());
     const user = userEvent.setup();
@@ -211,7 +223,7 @@ describe('StrategyComparison', () => {
   });
 
   it('renders the baseline error and the challenger result independently when only the baseline fails', async () => {
-    mockedGetStrategies.mockResolvedValue(['two-candle-breakout']);
+    mockedGetStrategies.mockResolvedValue(strategyInfos('two-candle-breakout'));
     mockedGetStopLosses.mockResolvedValue(['none']);
     mockedRunBacktest.mockImplementation(async (payload) =>
       payload.strategy === 'buy-and-hold'
@@ -231,7 +243,7 @@ describe('StrategyComparison', () => {
   });
 
   it('renders the challenger error and the baseline result independently when only the challenger fails', async () => {
-    mockedGetStrategies.mockResolvedValue(['two-candle-breakout']);
+    mockedGetStrategies.mockResolvedValue(strategyInfos('two-candle-breakout'));
     mockedGetStopLosses.mockResolvedValue(['none']);
     mockedRunBacktest.mockImplementation(async (payload) =>
       payload.strategy === 'buy-and-hold'
@@ -248,5 +260,79 @@ describe('StrategyComparison', () => {
     expect(await screen.findByText('challenger exploded')).toBeInTheDocument();
     expect(screen.getByText('Buy & Hold')).toBeInTheDocument();
     expect(screen.queryByText('Two Candle Breakout')).not.toBeInTheDocument();
+  });
+
+  it('renders no param inputs, and omits strategyParams from the request, for a zero-param strategy', async () => {
+    mockedGetStrategies.mockResolvedValue(strategyInfos('two-candle-breakout'));
+    mockedGetStopLosses.mockResolvedValue(['none']);
+    mockedRunBacktest.mockResolvedValue(buildResult());
+    const user = userEvent.setup();
+
+    renderComparison();
+    await waitForFetchesToSettle();
+
+    expect(screen.queryByLabelText('Short period')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Run comparison' }));
+
+    await waitFor(() => expect(mockedRunBacktest).toHaveBeenCalledTimes(2));
+    const [, challengerCall] = mockedRunBacktest.mock.calls.map(([payload]) => payload);
+    expect(challengerCall.strategyParams).toBeUndefined();
+  });
+
+  it('renders one labeled, default-prefilled input per declared param when a param strategy is selected', async () => {
+    mockedGetStrategies.mockResolvedValue([
+      {
+        name: 'sma-crossover',
+        params: [
+          { key: 'shortPeriod', label: 'Short period', default: 10, min: 1, step: 1 },
+          { key: 'longPeriod', label: 'Long period', default: 30, min: 2, step: 1 },
+        ],
+      },
+    ]);
+    mockedGetStopLosses.mockResolvedValue(['none']);
+
+    renderComparison();
+    await waitForFetchesToSettle();
+
+    const shortPeriod = await screen.findByLabelText('Short period');
+    const longPeriod = screen.getByLabelText('Long period');
+    expect((shortPeriod as HTMLInputElement).value).toBe('10');
+    expect((longPeriod as HTMLInputElement).value).toBe('30');
+  });
+
+  it('disables submit until all declared param fields are filled, then includes strategyParams on submit', async () => {
+    mockedGetStrategies.mockResolvedValue([
+      {
+        name: 'rsi-threshold',
+        params: [
+          { key: 'period', label: 'RSI period', default: 14, min: 2, step: 1 },
+          { key: 'oversold', label: 'Oversold threshold', default: 30, min: 0, max: 100, step: 1 },
+          { key: 'overbought', label: 'Overbought threshold', default: 70, min: 0, max: 100, step: 1 },
+        ],
+      },
+    ]);
+    mockedGetStopLosses.mockResolvedValue(['none']);
+    mockedRunBacktest.mockResolvedValue(buildResult());
+    const user = userEvent.setup();
+
+    renderComparison();
+    await waitForFetchesToSettle();
+
+    const submit = screen.getByRole('button', { name: 'Run comparison' });
+    expect(submit).not.toBeDisabled();
+
+    const periodField = screen.getByLabelText('RSI period');
+    await user.clear(periodField);
+    expect(submit).toBeDisabled();
+
+    await user.type(periodField, '21');
+    expect(submit).not.toBeDisabled();
+
+    await user.click(submit);
+
+    await waitFor(() => expect(mockedRunBacktest).toHaveBeenCalledTimes(2));
+    const [, challengerCall] = mockedRunBacktest.mock.calls.map(([payload]) => payload);
+    expect(challengerCall.strategyParams).toEqual({ period: 21, oversold: 30, overbought: 70 });
   });
 });
