@@ -71,7 +71,7 @@ Flags:
 | `-strategy` | Which strategy to run (see below). |
 | `-balance` | Starting cash balance, e.g. `10000.00`. Position sizing spends as much of this as affords whole shares at the buy price. |
 | `-v` | Optional. Print each BUY/SELL operation (see below). Off by default. |
-| `-config` | Optional. Path to a JSON file providing defaults for `-asset`, `-start`, `-end`, `-balance`, `-strategy`, `-v`, and `strategyParams` (see below). Flags passed explicitly always override the config file. |
+| `-config` | Optional. Path to a JSON file. When given, every other flag except `-v` is ignored in favor of the file's `asset`/`start`/`end`/`balance`/`strategy`/`strategyParams` (see below) — `-config` is all-or-nothing, not a per-flag default. |
 
 ### Using a config file
 
@@ -99,11 +99,15 @@ is equivalent to:
 go run ./cmd backtest -asset PETR4 -start 2015-01-02 -end 2015-12-30 -balance 10000.00 -strategy buy-and-hold
 ```
 
-All fields in the config file are optional, and any flag passed explicitly
-on the command line overrides that field from the file — the file only
-fills in defaults for flags you didn't pass. `compare` supports the same
-`-config` flag, with `strategy` in the file meaning the challenger strategy
-(same restriction as the `-strategy` flag: it can't be `buy-and-hold`).
+Passing `-config` is all-or-nothing: every other flag except `-v` is
+ignored in favor of the file, even if you also pass it explicitly on the
+command line — there's no per-flag merging. `-v` is the one exception: if
+passed explicitly it still wins, otherwise it falls back to the file's
+`"verbose"`. `compare` and `scan` support the same `-config` flag, with
+`strategy` in the file meaning the challenger strategy (same restriction as
+the `-strategy` flag: it can't be `buy-and-hold`); `scan` has no `-asset`
+flag, so a config file's `asset` field, if present, is simply not
+consulted.
 
 `strategyParams` is an object of named numeric params for whichever
 strategy you picked (see [Available strategies](#available-strategies)
