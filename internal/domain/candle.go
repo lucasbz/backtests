@@ -3,55 +3,16 @@ package domain
 import (
 	"encoding/json"
 	"fmt"
-	"math"
-	"strconv"
 
 	"github.com/Rhymond/go-money"
+
+	"github.com/lucasbz/backtests/internal/util"
 )
 
 // Currency is the currency every Candle/Order/BacktestResult money value is
 // denominated in. B3, the exchange scripts/import_cotahist.go pulls from,
 // only ever quotes in Brazilian reais.
 const Currency = money.BRL
-
-// moneyFromFloat converts a decimal value (e.g. 19.9) to money.Money.
-// money.NewFromFloat truncates (int64(amount*100)) instead of rounding, so
-// float64 imprecision silently corrupts values like 19.9 -> 1989 instead of
-// 1990; rounding first and going through money.New avoids that.
-func moneyFromFloat(f float64) money.Money {
-	return *money.New(int64(math.Round(f*100)), Currency)
-}
-
-// MoneyFromFloat is the exported form of moneyFromFloat, for callers
-// outside this package that need to convert a plain decimal value (e.g. a
-// JSON number from an API request) to money.Money - e.g. a fixed-amount
-// stop-loss's currency value. Prefer ParseMoney when the source is already
-// a string (it goes through the same rounding).
-func MoneyFromFloat(f float64) money.Money {
-	return moneyFromFloat(f)
-}
-
-// ParseMoney parses a plain decimal string (e.g. "10000.00", from a CLI
-// flag) into a money.Money in Currency.
-//
-// strconv.ParseFloat happily accepts "Inf"/"+Inf"/"-Inf"/"NaN" (and their
-// case-insensitive variants) as valid float64 values with no error; feeding
-// one of those into moneyFromFloat's math.Round(f*100) then int64(...)
-// conversion silently saturates to math.MaxInt64 (or NaN converts to 0)
-// instead of erroring, which would let a caller like handleBacktest's
-// "balance must be positive" check pass trivially on a bogus,
-// astronomically large "balance". Reject non-finite input explicitly
-// instead.
-func ParseMoney(s string) (money.Money, error) {
-	f, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return money.Money{}, fmt.Errorf("parsing money %q: %w", s, err)
-	}
-	if math.IsInf(f, 0) || math.IsNaN(f) {
-		return money.Money{}, fmt.Errorf("parsing money %q: value must be a finite number", s)
-	}
-	return moneyFromFloat(f), nil
-}
 
 type Candle struct {
 	Date     string
@@ -101,13 +62,13 @@ func (c *Candle) UnmarshalJSON(data []byte) error {
 	}
 
 	c.Date = raw.Date
-	c.Open = moneyFromFloat(raw.Open)
-	c.High = moneyFromFloat(raw.High)
-	c.Low = moneyFromFloat(raw.Low)
-	c.Avg = moneyFromFloat(raw.Avg)
-	c.Close = moneyFromFloat(raw.Close)
+	c.Open = util.MoneyFromFloat(raw.Open, Currency)
+	c.High = util.MoneyFromFloat(raw.High, Currency)
+	c.Low = util.MoneyFromFloat(raw.Low, Currency)
+	c.Avg = util.MoneyFromFloat(raw.Avg, Currency)
+	c.Close = util.MoneyFromFloat(raw.Close, Currency)
 	c.Quantity = raw.Quantity
-	c.Volume = moneyFromFloat(raw.Volume)
+	c.Volume = util.MoneyFromFloat(raw.Volume, Currency)
 	c.Trades = raw.Trades
 	return nil
 }

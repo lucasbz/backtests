@@ -77,29 +77,3 @@ func TestCandle_MarshalJSON_RoundTrips(t *testing.T) {
 		}
 	}
 }
-
-func TestParseMoney(t *testing.T) {
-	got, err := ParseMoney("10000.00")
-	if err != nil {
-		t.Fatalf("ParseMoney: %v", err)
-	}
-	assertMoneyAmount(t, "ParseMoney(10000.00)", got, 1000000)
-}
-
-func TestParseMoney_Invalid(t *testing.T) {
-	if _, err := ParseMoney("not-a-number"); err == nil {
-		t.Fatal("expected error for invalid input")
-	}
-}
-
-// TestParseMoney_NonFinite checks that Inf/-Inf/NaN - all of which
-// strconv.ParseFloat parses without error - are explicitly rejected by
-// ParseMoney instead of silently saturating to math.MaxInt64 (Inf) or 0
-// (NaN) cents (see docs/plans/code-review-findings.md, finding #2).
-func TestParseMoney_NonFinite(t *testing.T) {
-	for _, s := range []string{"Inf", "+Inf", "-Inf", "inf", "NaN", "nan"} {
-		if _, err := ParseMoney(s); err == nil {
-			t.Errorf("ParseMoney(%q) = nil error, want an error (non-finite input)", s)
-		}
-	}
-}

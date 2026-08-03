@@ -21,7 +21,7 @@ func (s *PercentStopLoss) Name() string {
 }
 
 // triggerPrice is entry price x (1 - Percent/100), rounded to the nearest
-// cent the same way domain.MoneyFromFloat rounds a decimal input.
+// cent the same way util.MoneyFromFloat rounds a decimal input.
 func (s *PercentStopLoss) triggerPrice(entry money.Money) money.Money {
 	factor := 1 - s.Percent/100
 	amount := int64(math.Round(float64(entry.Amount()) * factor))

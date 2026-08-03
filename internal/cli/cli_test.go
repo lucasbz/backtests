@@ -163,6 +163,24 @@ func TestRunCLI_Backtest_InvalidEndDate(t *testing.T) {
 	}
 }
 
+// TestRunCLI_Backtest_EndBeforeStart locks in a gap util.ParseDateRange
+// closed: runBacktest previously parsed -start/-end independently with no
+// ordering check, so a swapped date pair silently ran a backtest over an
+// unintended/empty range instead of being rejected.
+func TestRunCLI_Backtest_EndBeforeStart(t *testing.T) {
+	err := RunCLI([]string{
+		"backtest",
+		"-asset", "PETR4",
+		"-start", "2010-12-31",
+		"-end", "2010-01-01",
+		"-strategy", "buy-and-hold",
+		"-balance", "10000.00",
+	})
+	if err == nil {
+		t.Fatal("expected error for end before start")
+	}
+}
+
 func TestRunCLI_Backtest_InvalidFlag(t *testing.T) {
 	err := RunCLI([]string{"backtest", "-not-a-real-flag"})
 	if err == nil {
@@ -374,6 +392,22 @@ func TestRunCLI_Compare_BuyAndHoldChallengerRejected(t *testing.T) {
 	}
 }
 
+// TestRunCLI_Compare_EndBeforeStart mirrors
+// TestRunCLI_Backtest_EndBeforeStart.
+func TestRunCLI_Compare_EndBeforeStart(t *testing.T) {
+	err := RunCLI([]string{
+		"compare",
+		"-asset", "PETR4",
+		"-start", "2010-12-31",
+		"-end", "2010-01-01",
+		"-strategy", "two-candle-breakout",
+		"-balance", "10000.00",
+	})
+	if err == nil {
+		t.Fatal("expected error for end before start")
+	}
+}
+
 func TestRunCLI_Compare_InvalidFlag(t *testing.T) {
 	err := RunCLI([]string{"compare", "-not-a-real-flag"})
 	if err == nil {
@@ -549,6 +583,20 @@ func TestRunCLI_Scan_InvalidDate(t *testing.T) {
 	}
 }
 
+// TestRunCLI_Scan_EndBeforeStart mirrors TestRunCLI_Backtest_EndBeforeStart.
+func TestRunCLI_Scan_EndBeforeStart(t *testing.T) {
+	err := RunCLI([]string{
+		"scan",
+		"-start", "2010-12-31",
+		"-end", "2010-01-01",
+		"-strategy", "two-candle-breakout",
+		"-balance", "10000.00",
+	})
+	if err == nil {
+		t.Fatal("expected error for end before start")
+	}
+}
+
 func TestRunCLI_Scan_InvalidBalance(t *testing.T) {
 	err := RunCLI([]string{
 		"scan",
@@ -698,11 +746,12 @@ func TestRunCLI_Backtest_Config_StrategyParams_MissingRequiredParam(t *testing.T
 	}
 }
 
-// TestRunCLI_Backtest_Config_FlagOverridesFile passes -strategy explicitly
+// TestRunCLI_Backtest_Config_IgnoresOtherFlags passes -strategy explicitly
 // alongside -config (whose strategy field names a different strategy), and
-// asserts the explicit flag wins, proving flags always override the config
-// file rather than the other way around.
-func TestRunCLI_Backtest_Config_FlagOverridesFile(t *testing.T) {
+// asserts the config file wins: -config is all-or-nothing, so every other
+// flag except -v is ignored once it's given, rather than being merged in
+// as a per-flag override.
+func TestRunCLI_Backtest_Config_IgnoresOtherFlags(t *testing.T) {
 	chdirToRepoRoot(t)
 
 	configPath := writeConfigFile(t, `{
@@ -724,11 +773,11 @@ func TestRunCLI_Backtest_Config_FlagOverridesFile(t *testing.T) {
 		}
 	})
 
-	if !bytes.Contains([]byte(output), []byte("Two-Candle Breakout")) {
-		t.Errorf("output = %q, want it to contain the explicitly-passed strategy", output)
+	if !bytes.Contains([]byte(output), []byte("Buy & Hold")) {
+		t.Errorf("output = %q, want it to contain the config file's strategy", output)
 	}
-	if bytes.Contains([]byte(output), []byte("Buy & Hold")) {
-		t.Errorf("output = %q, want it to NOT contain the config file's strategy", output)
+	if bytes.Contains([]byte(output), []byte("Two-Candle Breakout")) {
+		t.Errorf("output = %q, want it to NOT contain the explicitly-passed strategy, since -config ignores it", output)
 	}
 }
 

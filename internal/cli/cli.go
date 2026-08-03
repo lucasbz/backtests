@@ -11,6 +11,7 @@ import (
 	"github.com/lucasbz/backtests/internal/cotahist"
 	"github.com/lucasbz/backtests/internal/domain"
 	"github.com/lucasbz/backtests/internal/strategies"
+	"github.com/lucasbz/backtests/internal/util"
 )
 
 func RunCLI(args []string) error {
@@ -51,8 +52,11 @@ func RunBacktest(args []string) error {
 		if err != nil {
 			return err
 		}
-		applyConfigDefaults(cfg, explicitFlags(fs), &assetVal, &startVal, &endVal, &balanceVal, &strategyVal, &verboseVal)
+		assetVal, startVal, endVal, balanceVal, strategyVal = cfg.Asset, cfg.Start, cfg.End, cfg.Balance, cfg.Strategy
 		strategyParamsVal = cfg.StrategyParams
+		if !verboseWasSet(fs) {
+			verboseVal = cfg.Verbose
+		}
 	}
 
 	if assetVal == "" || startVal == "" || endVal == "" || strategyVal == "" || balanceVal == "" {
@@ -60,12 +64,9 @@ func RunBacktest(args []string) error {
 		return fmt.Errorf("-asset, -start, -end, -balance and -strategy are all required")
 	}
 
-	startingBalance, err := domain.ParseMoney(balanceVal)
+	startingBalance, err := util.ParsePositiveMoney(balanceVal, domain.Currency, "balance must be greater than zero")
 	if err != nil {
-		return fmt.Errorf("parsing -balance: %w", err)
-	}
-	if !startingBalance.IsPositive() {
-		return fmt.Errorf("-balance must be greater than zero, got %q", balanceVal)
+		return err
 	}
 
 	newStrategy, err := strategies.LoadStrategy(strategyVal, strategyParamsVal)
@@ -73,13 +74,9 @@ func RunBacktest(args []string) error {
 		return err
 	}
 
-	startDate, err := time.Parse("2006-01-02", startVal)
+	startDate, endDate, err := util.ParseDateRange(startVal, endVal)
 	if err != nil {
-		return fmt.Errorf("parsing -start: %w", err)
-	}
-	endDate, err := time.Parse("2006-01-02", endVal)
-	if err != nil {
-		return fmt.Errorf("parsing -end: %w", err)
+		return err
 	}
 
 	bt := &backtest.Backtest{
@@ -171,8 +168,11 @@ func RunCompare(args []string) error {
 		if err != nil {
 			return err
 		}
-		applyConfigDefaults(cfg, explicitFlags(fs), &assetVal, &startVal, &endVal, &balanceVal, &strategyVal, &verboseVal)
+		assetVal, startVal, endVal, balanceVal, strategyVal = cfg.Asset, cfg.Start, cfg.End, cfg.Balance, cfg.Strategy
 		strategyParamsVal = cfg.StrategyParams
+		if !verboseWasSet(fs) {
+			verboseVal = cfg.Verbose
+		}
 	}
 
 	if assetVal == "" || startVal == "" || endVal == "" || strategyVal == "" || balanceVal == "" {
@@ -184,12 +184,9 @@ func RunCompare(args []string) error {
 		return fmt.Errorf("-strategy cannot be %q: buy-and-hold is always run as the baseline, so comparing it against itself is meaningless", baselineStrategyName)
 	}
 
-	startingBalance, err := domain.ParseMoney(balanceVal)
+	startingBalance, err := util.ParsePositiveMoney(balanceVal, domain.Currency, "balance must be greater than zero")
 	if err != nil {
-		return fmt.Errorf("parsing -balance: %w", err)
-	}
-	if !startingBalance.IsPositive() {
-		return fmt.Errorf("-balance must be greater than zero, got %q", balanceVal)
+		return err
 	}
 
 	// The baseline is always plain Buy & Hold, which ignores params, so it
@@ -204,13 +201,9 @@ func RunCompare(args []string) error {
 		return err
 	}
 
-	startDate, err := time.Parse("2006-01-02", startVal)
+	startDate, endDate, err := util.ParseDateRange(startVal, endVal)
 	if err != nil {
-		return fmt.Errorf("parsing -start: %w", err)
-	}
-	endDate, err := time.Parse("2006-01-02", endVal)
-	if err != nil {
-		return fmt.Errorf("parsing -end: %w", err)
+		return err
 	}
 
 	baselineBT := &backtest.Backtest{
@@ -296,12 +289,13 @@ func RunScan(args []string) error {
 		if err != nil {
 			return err
 		}
-		// scan has no -asset flag; a dummy string satisfies
-		// applyConfigDefaults' signature and any config file "asset" is
-		// simply ignored.
-		var unusedAsset string
-		applyConfigDefaults(cfg, explicitFlags(fs), &unusedAsset, &startVal, &endVal, &balanceVal, &strategyVal, &verboseVal)
+		// scan has no -asset flag; any config file "asset" is simply not
+		// consulted.
+		startVal, endVal, balanceVal, strategyVal = cfg.Start, cfg.End, cfg.Balance, cfg.Strategy
 		strategyParamsVal = cfg.StrategyParams
+		if !verboseWasSet(fs) {
+			verboseVal = cfg.Verbose
+		}
 	}
 
 	if startVal == "" || endVal == "" || strategyVal == "" || balanceVal == "" {
@@ -313,12 +307,9 @@ func RunScan(args []string) error {
 		return fmt.Errorf("-strategy cannot be %q: buy-and-hold is always run as the baseline, so comparing it against itself is meaningless", baselineStrategyName)
 	}
 
-	startingBalance, err := domain.ParseMoney(balanceVal)
+	startingBalance, err := util.ParsePositiveMoney(balanceVal, domain.Currency, "balance must be greater than zero")
 	if err != nil {
-		return fmt.Errorf("parsing -balance: %w", err)
-	}
-	if !startingBalance.IsPositive() {
-		return fmt.Errorf("-balance must be greater than zero, got %q", balanceVal)
+		return err
 	}
 
 	// Validate before printing anything, so a bad -strategy doesn't first
@@ -327,13 +318,9 @@ func RunScan(args []string) error {
 		return err
 	}
 
-	startDate, err := time.Parse("2006-01-02", startVal)
+	startDate, endDate, err := util.ParseDateRange(startVal, endVal)
 	if err != nil {
-		return fmt.Errorf("parsing -start: %w", err)
-	}
-	endDate, err := time.Parse("2006-01-02", endVal)
-	if err != nil {
-		return fmt.Errorf("parsing -end: %w", err)
+		return err
 	}
 
 	assets, err := cotahist.ListAssets(*year)

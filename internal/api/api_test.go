@@ -505,6 +505,16 @@ func TestHandleScan_InvalidDate(t *testing.T) {
 	}
 }
 
+// TestHandleScan_EndBeforeStart mirrors TestHandleBacktest_EndBeforeStart:
+// this ordering check was previously missing from handleScan too.
+func TestHandleScan_EndBeforeStart(t *testing.T) {
+	body := []byte(`{"start":"2015-12-30","end":"2015-01-02","strategy":"two-candle-breakout","balance":"10000.00"}`)
+	rec := doRequest(t, http.MethodPost, "/api/scan", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
 func TestHandleScan_UnknownStopLossType(t *testing.T) {
 	body := []byte(`{"start":"2015-01-02","end":"2015-12-30","strategy":"two-candle-breakout","balance":"10000.00","stopLoss":{"type":"does-not-exist","value":5}}`)
 	rec := doRequest(t, http.MethodPost, "/api/scan", body)
@@ -826,6 +836,19 @@ func TestHandleAssets_InvalidYear(t *testing.T) {
 
 func TestHandleBacktest_InvalidDate(t *testing.T) {
 	body := []byte(`{"asset":"PETR4","start":"not-a-date","end":"2015-12-30","strategy":"buy-and-hold","balance":"10000.00"}`)
+	rec := doRequest(t, http.MethodPost, "/api/backtest", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+// TestHandleBacktest_EndBeforeStart locks in a gap util.ParseDateRange
+// closed: handleBacktest previously parsed start/end independently with no
+// ordering check (unlike handleCandles/handleIndicator, which always had
+// one), so a swapped date pair silently ran a backtest over an
+// unintended/empty range instead of being rejected.
+func TestHandleBacktest_EndBeforeStart(t *testing.T) {
+	body := []byte(`{"asset":"PETR4","start":"2015-12-30","end":"2015-01-02","strategy":"buy-and-hold","balance":"10000.00"}`)
 	rec := doRequest(t, http.MethodPost, "/api/backtest", body)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)

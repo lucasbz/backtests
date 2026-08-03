@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -18,6 +17,7 @@ import (
 	"github.com/lucasbz/backtests/internal/indicators"
 	"github.com/lucasbz/backtests/internal/stoploss"
 	"github.com/lucasbz/backtests/internal/strategies"
+	"github.com/lucasbz/backtests/internal/util"
 )
 
 // assetPattern is the strict allowlist enforced on every request's
@@ -238,13 +238,9 @@ func handleBacktest(c *gin.Context) {
 		return
 	}
 
-	startingBalance, err := domain.ParseMoney(req.Balance)
+	startingBalance, err := util.ParsePositiveMoney(req.Balance, domain.Currency, "balance must be greater than zero")
 	if err != nil {
-		writeError(c, http.StatusBadRequest, "parsing balance: "+err.Error())
-		return
-	}
-	if !startingBalance.IsPositive() {
-		writeError(c, http.StatusBadRequest, "balance must be greater than zero")
+		writeError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -269,14 +265,9 @@ func handleBacktest(c *gin.Context) {
 		}
 	}
 
-	startDate, err := time.Parse("2006-01-02", req.Start)
+	startDate, endDate, err := util.ParseDateRange(req.Start, req.End)
 	if err != nil {
-		writeError(c, http.StatusBadRequest, "parsing start: "+err.Error())
-		return
-	}
-	endDate, err := time.Parse("2006-01-02", req.End)
-	if err != nil {
-		writeError(c, http.StatusBadRequest, "parsing end: "+err.Error())
+		writeError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -370,13 +361,9 @@ func handleScan(c *gin.Context) {
 		return
 	}
 
-	startingBalance, err := domain.ParseMoney(req.Balance)
+	startingBalance, err := util.ParsePositiveMoney(req.Balance, domain.Currency, "balance must be greater than zero")
 	if err != nil {
-		writeError(c, http.StatusBadRequest, "parsing balance: "+err.Error())
-		return
-	}
-	if !startingBalance.IsPositive() {
-		writeError(c, http.StatusBadRequest, "balance must be greater than zero")
+		writeError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -401,14 +388,9 @@ func handleScan(c *gin.Context) {
 		}
 	}
 
-	startDate, err := time.Parse("2006-01-02", req.Start)
+	startDate, endDate, err := util.ParseDateRange(req.Start, req.End)
 	if err != nil {
-		writeError(c, http.StatusBadRequest, "parsing start: "+err.Error())
-		return
-	}
-	endDate, err := time.Parse("2006-01-02", req.End)
-	if err != nil {
-		writeError(c, http.StatusBadRequest, "parsing end: "+err.Error())
+		writeError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -459,18 +441,9 @@ func handleCandles(c *gin.Context) {
 		return
 	}
 
-	startDate, err := time.Parse("2006-01-02", start)
+	startDate, endDate, err := util.ParseDateRange(start, end)
 	if err != nil {
-		writeError(c, http.StatusBadRequest, "parsing start: "+err.Error())
-		return
-	}
-	endDate, err := time.Parse("2006-01-02", end)
-	if err != nil {
-		writeError(c, http.StatusBadRequest, "parsing end: "+err.Error())
-		return
-	}
-	if endDate.Before(startDate) {
-		writeError(c, http.StatusBadRequest, "end must not be before start")
+		writeError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -521,18 +494,9 @@ func handleIndicator(indicatorType string) gin.HandlerFunc {
 			return
 		}
 
-		startDate, err := time.Parse("2006-01-02", start)
+		startDate, endDate, err := util.ParseDateRange(start, end)
 		if err != nil {
-			writeError(c, http.StatusBadRequest, "parsing start: "+err.Error())
-			return
-		}
-		endDate, err := time.Parse("2006-01-02", end)
-		if err != nil {
-			writeError(c, http.StatusBadRequest, "parsing end: "+err.Error())
-			return
-		}
-		if endDate.Before(startDate) {
-			writeError(c, http.StatusBadRequest, "end must not be before start")
+			writeError(c, http.StatusBadRequest, err.Error())
 			return
 		}
 

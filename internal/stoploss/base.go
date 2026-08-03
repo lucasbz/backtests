@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/lucasbz/backtests/internal/domain"
+	"github.com/lucasbz/backtests/internal/util"
 )
 
 // availableStopLosses maps a stop-loss type name (the API/CLI-facing slug,
@@ -51,13 +52,13 @@ var availableStopLosses = map[string]func(value float64) (domain.StopLoss, error
 		if value <= 0 {
 			return nil, fmt.Errorf("fixed-amount stop-loss value must be greater than zero, got %v", value)
 		}
-		return &FixedAmountStopLoss{Amount: domain.MoneyFromFloat(value)}, nil
+		return &FixedAmountStopLoss{Amount: util.MoneyFromFloat(value, domain.Currency)}, nil
 	},
 	"total-fixed-amount": func(value float64) (domain.StopLoss, error) {
 		if value <= 0 {
 			return nil, fmt.Errorf("total-fixed-amount stop-loss value must be greater than zero, got %v", value)
 		}
-		return &TotalFixedAmountStopLoss{Amount: domain.MoneyFromFloat(value)}, nil
+		return &TotalFixedAmountStopLoss{Amount: util.MoneyFromFloat(value, domain.Currency)}, nil
 	},
 	"none": func(value float64) (domain.StopLoss, error) {
 		if value != 0 {
