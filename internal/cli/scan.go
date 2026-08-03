@@ -36,43 +36,34 @@ func RunScan(args []string) error {
 		return err
 	}
 
-	startVal, endVal, balanceVal, strategyVal, verboseVal := *start, *end, *balance, *strategyName, *verbose
-	var strategyParamsVal map[string]float64
-	if *configPath != "" {
-		cfg, err := loadConfig(*configPath)
-		if err != nil {
-			return err
-		}
-		// scan has no -asset flag; any config file "asset" is simply not
-		// consulted.
-		startVal, endVal, balanceVal, strategyVal = cfg.Start, cfg.End, cfg.Balance, cfg.Strategy
-		strategyParamsVal = cfg.StrategyParams
-		if !verboseWasSet(fs) {
-			verboseVal = cfg.Verbose
-		}
+	// scan has no -asset flag; any config file "asset" is simply not
+	// consulted (params.Asset stays unused below).
+	params, err := resolveParams(fs, *configPath, "", *start, *end, *balance, *strategyName, *verbose)
+	if err != nil {
+		return err
 	}
 
-	if startVal == "" || endVal == "" || strategyVal == "" || balanceVal == "" {
+	if params.Start == "" || params.End == "" || params.Strategy == "" || params.Balance == "" {
 		fs.Usage()
 		return fmt.Errorf("-start, -end, -balance and -strategy are all required")
 	}
 
-	if strategyVal == baselineStrategyName {
+	if params.Strategy == baselineStrategyName {
 		return fmt.Errorf("-strategy cannot be %q: buy-and-hold is always run as the baseline, so comparing it against itself is meaningless", baselineStrategyName)
 	}
 
-	startingBalance, err := util.ParsePositiveMoney(balanceVal, domain.Currency, "balance must be greater than zero")
+	startingBalance, err := util.ParsePositiveMoney(params.Balance, domain.Currency, "balance must be greater than zero")
 	if err != nil {
 		return err
 	}
 
 	// Validate before printing anything, so a bad -strategy doesn't first
 	// print a misleading "Scanning N assets..." header.
-	if _, err := strategies.LoadStrategy(strategyVal, strategyParamsVal); err != nil {
+	if _, err := strategies.LoadStrategy(params.Strategy, params.StrategyParams); err != nil {
 		return err
 	}
 
-	startDate, endDate, err := util.ParseDateRange(startVal, endVal)
+	startDate, endDate, err := util.ParseDateRange(params.Start, params.End)
 	if err != nil {
 		return err
 	}
@@ -84,7 +75,7 @@ func RunScan(args []string) error {
 
 	fmt.Printf(
 		"Scanning %d assets: %s vs Buy & Hold (%s to %s)...\n\n",
-		len(assets), strategyVal, startVal, endVal,
+		len(assets), params.Strategy, params.Start, params.End,
 	)
 
 	results, err := backtest.Scan(backtest.ScanParams{
@@ -92,14 +83,14 @@ func RunScan(args []string) error {
 		Start:          startDate,
 		End:            endDate,
 		Balance:        startingBalance,
-		StrategyName:   strategyVal,
-		StrategyParams: strategyParamsVal,
+		StrategyName:   params.Strategy,
+		StrategyParams: params.StrategyParams,
 	})
 	if err != nil {
 		return err
 	}
 
-	printScanResults(results, strategyVal, verboseVal)
+	printScanResults(results, params.Strategy, params.Verbose)
 	return nil
 }
 

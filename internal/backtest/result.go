@@ -2,6 +2,7 @@ package backtest
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/Rhymond/go-money"
 	"github.com/lucasbz/backtests/internal/domain"
@@ -107,4 +108,92 @@ func (r BacktestResult) MarshalJSON() ([]byte, error) {
 		MaxDrawdownAmount:     maxDrawdownAmount.AsMajorUnits(),
 		Operations:            r.Operations,
 	})
+}
+
+// NewBacktestResult turns a completed operations list into a
+// BacktestResult, given the strategy's display name and the backtest's
+// starting balance: go over each operation, adding its gain or loss to the
+// running total profit and balance, counting it as a gain or a loss, and
+// tracking the running peak balance to find the largest peak-to-trough
+// decline (maxDrawdownPercentage/maxDrawdownAmount, cached on
+// BacktestResult - see its MaxDrawdownPercentage/MaxDrawdownAmount
+// methods - since Operations, which this walk depends on, may be cleared
+// by callers after the fact to trim response payloads).
+//
+// This is the only way to construct a valid BacktestResult - both fields
+// backing MaxDrawdownPercentage/MaxDrawdownAmount are unexported, so a
+// BacktestResult built any other way (e.g. a struct literal from another
+// package) can't set them and would report a zero drawdown regardless of
+// its Operations. Callers that need a BacktestResult for a test, without
+// going through a full Backtest.Run(), should still call
+// NewBacktestResult with real Operations rather than fabricate one field
+// at a time.
+func NewBacktestResult(strategyName string, operations []domain.Operation, startingBalance money.Money) (*BacktestResult, error) {
+	total := len(operations)
+
+	profit := money.New(0, domain.Currency)
+	balance := startingBalance
+	gains, losses := 0, 0
+	peak := startingBalance
+	maxDrawdownAmount := *money.New(0, domain.Currency)
+	var maxDrawdownPercentage float64
+	for _, op := range operations {
+		outcome, err := op.Outcome()
+		if err != nil {
+			return nil, fmt.Errorf("computing outcome for operation on %s: %w", op.Date, err)
+		}
+		switch outcome {
+		case domain.Gain:
+			gains++
+		case domain.Loss:
+			losses++
+		}
+
+		opProfit, err := op.Profit()
+		if err != nil {
+			return nil, fmt.Errorf("computing profit for operation on %s: %w", op.Date, err)
+		}
+
+		profit, err = profit.Add(&opProfit)
+		if err != nil {
+			return nil, fmt.Errorf("accumulating profit: %w", err)
+		}
+
+		newBalance, err := balance.Add(&opProfit)
+		if err != nil {
+			return nil, fmt.Errorf("updating balance: %w", err)
+		}
+		balance = *newBalance
+
+		isNewPeak, err := balance.GreaterThan(&peak)
+		if err != nil {
+			return nil, fmt.Errorf("comparing balance to peak on %s: %w", op.Date, err)
+		}
+		if isNewPeak {
+			peak = balance
+		} else if peak.AsMajorUnits() > 0 {
+			drawdownAmount, err := peak.Subtract(&balance)
+			if err != nil {
+				return nil, fmt.Errorf("computing drawdown amount on %s: %w", op.Date, err)
+			}
+			drawdownPercentage := drawdownAmount.AsMajorUnits() / peak.AsMajorUnits() * 100
+			if drawdownPercentage > maxDrawdownPercentage {
+				maxDrawdownPercentage = drawdownPercentage
+				maxDrawdownAmount = *drawdownAmount
+			}
+		}
+	}
+
+	return &BacktestResult{
+		StrategyName:          strategyName,
+		Operations:            operations,
+		StartingBalance:       startingBalance,
+		EndingBalance:         balance,
+		Profit:                *profit,
+		TotalOperations:       total,
+		Gains:                 gains,
+		Losses:                losses,
+		maxDrawdownPercentage: maxDrawdownPercentage,
+		maxDrawdownAmount:     maxDrawdownAmount,
+	}, nil
 }

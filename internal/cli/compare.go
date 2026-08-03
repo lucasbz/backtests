@@ -5,9 +5,7 @@ import (
 	"fmt"
 
 	"github.com/lucasbz/backtests/internal/backtest"
-	"github.com/lucasbz/backtests/internal/domain"
 	"github.com/lucasbz/backtests/internal/strategies"
-	"github.com/lucasbz/backtests/internal/util"
 )
 
 const baselineStrategyName = "buy-and-hold"
@@ -29,80 +27,38 @@ func RunCompare(args []string) error {
 		return err
 	}
 
-	assetVal, startVal, endVal, balanceVal, strategyVal, verboseVal := *asset, *start, *end, *balance, *strategyName, *verbose
-	var strategyParamsVal map[string]float64
-	if *configPath != "" {
-		cfg, err := loadConfig(*configPath)
-		if err != nil {
-			return err
-		}
-		assetVal, startVal, endVal, balanceVal, strategyVal = cfg.Asset, cfg.Start, cfg.End, cfg.Balance, cfg.Strategy
-		strategyParamsVal = cfg.StrategyParams
-		if !verboseWasSet(fs) {
-			verboseVal = cfg.Verbose
-		}
+	params, err := resolveParams(fs, *configPath, *asset, *start, *end, *balance, *strategyName, *verbose)
+	if err != nil {
+		return err
 	}
 
-	if assetVal == "" || startVal == "" || endVal == "" || strategyVal == "" || balanceVal == "" {
+	if params.Asset == "" || params.Start == "" || params.End == "" || params.Strategy == "" || params.Balance == "" {
 		fs.Usage()
 		return fmt.Errorf("-asset, -start, -end, -balance and -strategy are all required")
 	}
 
-	if strategyVal == baselineStrategyName {
+	if params.Strategy == baselineStrategyName {
 		return fmt.Errorf("-strategy cannot be %q: buy-and-hold is always run as the baseline, so comparing it against itself is meaningless", baselineStrategyName)
 	}
 
-	startingBalance, err := util.ParsePositiveMoney(balanceVal, domain.Currency, "balance must be greater than zero")
-	if err != nil {
-		return err
-	}
-
 	// The baseline is always plain Buy & Hold, which ignores params, so it
-	// never needs strategyParamsVal (that's only meaningful for the
+	// never needs params.StrategyParams (that's only meaningful for the
 	// challenger, named by -strategy/the config file's "strategy" field).
-	baselineStrategy, err := strategies.LoadStrategy(baselineStrategyName, nil)
-	if err != nil {
-		return err
-	}
-	challengerStrategy, err := strategies.LoadStrategy(strategyVal, strategyParamsVal)
+	baselineResult, startDate, endDate, err := executeBacktest(params, baselineStrategyName, nil)
 	if err != nil {
 		return err
 	}
 
-	startDate, endDate, err := util.ParseDateRange(startVal, endVal)
-	if err != nil {
-		return err
-	}
-
-	baselineBT := &backtest.Backtest{
-		Asset:    assetVal,
-		Start:    startDate,
-		End:      endDate,
-		Balance:  startingBalance,
-		Strategy: baselineStrategy,
-	}
-	baselineResult, err := baselineBT.Run()
-	if err != nil {
-		return err
-	}
-
-	challengerBT := &backtest.Backtest{
-		Asset:    assetVal,
-		Start:    startDate,
-		End:      endDate,
-		Balance:  startingBalance,
-		Strategy: challengerStrategy,
-	}
-	challengerResult, err := challengerBT.Run()
+	challengerResult, _, _, err := executeBacktest(params, params.Strategy, params.StrategyParams)
 	if err != nil {
 		return err
 	}
 
 	fmt.Println("=== Baseline: Buy & Hold ===")
-	printResult(assetVal, startDate, endDate, baselineResult, verboseVal)
+	printResult(params.Asset, startDate, endDate, baselineResult, params.Verbose)
 
-	fmt.Printf("=== Challenger: %s ===\n", strategyVal)
-	printResult(assetVal, startDate, endDate, challengerResult, verboseVal)
+	fmt.Printf("=== Challenger: %s ===\n", params.Strategy)
+	printResult(params.Asset, startDate, endDate, challengerResult, params.Verbose)
 
 	fmt.Println()
 	printComparisonSummary(baselineResult, challengerResult)

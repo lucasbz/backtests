@@ -3,8 +3,6 @@ package cli
 import (
 	"flag"
 	"fmt"
-	"os"
-	"text/tabwriter"
 	"time"
 
 	"github.com/lucasbz/backtests/internal/backtest"
@@ -28,100 +26,59 @@ func RunBacktest(args []string) error {
 		return err
 	}
 
-	assetVal, startVal, endVal, balanceVal, strategyVal, verboseVal := *asset, *start, *end, *balance, *strategyName, *verbose
-	var strategyParamsVal map[string]float64
-
-	if *configPath != "" {
-		cfg, err := loadConfig(*configPath)
-		if err != nil {
-			return err
-		}
-		assetVal, startVal, endVal, balanceVal, strategyVal = cfg.Asset, cfg.Start, cfg.End, cfg.Balance, cfg.Strategy
-		strategyParamsVal = cfg.StrategyParams
-		if !verboseWasSet(fs) {
-			verboseVal = cfg.Verbose
-		}
+	params, err := resolveParams(fs, *configPath, *asset, *start, *end, *balance, *strategyName, *verbose)
+	if err != nil {
+		return err
 	}
 
-	if assetVal == "" || startVal == "" || endVal == "" || strategyVal == "" || balanceVal == "" {
+	if params.Asset == "" || params.Start == "" || params.End == "" || params.Strategy == "" || params.Balance == "" {
 		fs.Usage()
 		return fmt.Errorf("-asset, -start, -end, -balance and -strategy are all required")
 	}
 
-	startingBalance, err := util.ParsePositiveMoney(balanceVal, domain.Currency, "balance must be greater than zero")
+	result, startDate, endDate, err := executeBacktest(params, params.Strategy, params.StrategyParams)
 	if err != nil {
 		return err
 	}
 
-	newStrategy, err := strategies.LoadStrategy(strategyVal, strategyParamsVal)
+	printResult(params.Asset, startDate, endDate, result, params.Verbose)
+	return nil
+}
+
+// executeBacktest runs a single backtest from a resolvedParams (Asset,
+// Start, End, Balance) plus an explicit strategy name/params - separate from
+// params.Strategy/params.StrategyParams so runCompare can override them for
+// its fixed Buy & Hold baseline while reusing the same resolved
+// asset/dates/balance. Returns the parsed start/end dates alongside the
+// result since callers print both.
+func executeBacktest(params resolvedParams, strategyName string, strategyParams map[string]float64) (*backtest.BacktestResult, time.Time, time.Time, error) {
+	startingBalance, err := util.ParsePositiveMoney(params.Balance, domain.Currency, "balance must be greater than zero")
 	if err != nil {
-		return err
+		return nil, time.Time{}, time.Time{}, err
 	}
 
-	startDate, endDate, err := util.ParseDateRange(startVal, endVal)
+	strategy, err := strategies.LoadStrategy(strategyName, strategyParams)
 	if err != nil {
-		return err
+		return nil, time.Time{}, time.Time{}, err
+	}
+
+	startDate, endDate, err := util.ParseDateRange(params.Start, params.End)
+	if err != nil {
+		return nil, time.Time{}, time.Time{}, err
 	}
 
 	bt := &backtest.Backtest{
-		Asset:    assetVal,
+		Asset:    params.Asset,
 		Start:    startDate,
 		End:      endDate,
 		Balance:  startingBalance,
-		Strategy: newStrategy,
+		Strategy: strategy,
 	}
 
 	result, err := bt.Run()
 	if err != nil {
-		return err
+		return nil, time.Time{}, time.Time{}, err
 	}
 
-	printResult(assetVal, startDate, endDate, result, verboseVal)
-	return nil
-}
-
-func printResult(asset string, start, end time.Time, result *backtest.BacktestResult, verbose bool) {
-	maxDrawdownAmount := result.MaxDrawdownAmount()
-	fmt.Printf(
-		"Running Backtest for: %s %s to %s | Strategy: %s | Balance: %s -> %s (Profit: %s, %.2f%%) | G/L/T: %d/%d/%d (WR: %.2f%%) | Max DD: %s (%.2f%%)\n",
-		asset, start.Format("2006-01-02"), end.Format("2006-01-02"), result.StrategyName,
-		result.StartingBalance.Display(), result.EndingBalance.Display(), result.Profit.Display(), result.ProfitPercentage(),
-		result.Gains, result.Losses, result.TotalOperations, result.WinRate(),
-		maxDrawdownAmount.Display(), result.MaxDrawdownPercentage(),
-	)
-
-	if verbose {
-		printOperations(result.Operations)
-	}
-}
-
-func printOperations(operations []domain.Operation) {
-	if len(operations) == 0 {
-		fmt.Println("Operations: none")
-		return
-	}
-
-	fmt.Printf("Operations (%d):\n", len(operations))
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "#\tBuy date\tBuy price\tSell date\tSell price\tDays\tQty\tProfit")
-	for i, op := range operations {
-		profitStr := "?"
-		if profit, err := op.Profit(); err == nil {
-			profitStr = profit.Display()
-		}
-
-		daysStr := "?"
-		if days, err := op.Days(); err == nil {
-			daysStr = fmt.Sprintf("%d", days)
-		}
-
-		fmt.Fprintf(
-			w, "%d\t%s\t%s\t%s\t%s\t%s\t%d\t%s\n",
-			i+1,
-			op.BuyOrder.Date, op.BuyOrder.Price.Display(),
-			op.SellOrder.Date, op.SellOrder.Price.Display(),
-			daysStr, op.BuyOrder.Quantity, profitStr,
-		)
-	}
-	w.Flush()
+	return result, startDate, endDate, nil
 }
